@@ -9,9 +9,9 @@ visibility: internal
 
 ## What it is
 
-A canonical-main activation range's changed paths owe a set of deterministic maintenance actions —
-installing the toolchain, reconciling dependencies, restarting the daemon,
-reloading the terminal interface, and running the documentation and artifact
+A canonical-main activation range's changed paths owe a set of deterministic
+maintenance actions — the actions the merged registry declares, such as
+installing the checkout's toolchain and running the documentation and artifact
 pipeline. Those actions carry no decision: each either ran or it did not.
 
 Maintenance runs automatically whenever the canonical checkout advances: the
@@ -42,6 +42,8 @@ contract governs only what happens when maintenance runs.
   tips. Changed-file resolution, command expansion, outcomes, and replay all use
   those immutable fields.
 
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 - **Owed set.** The main-only maintenance actions selected by the merged
   registry's path bindings and canonical-main activation bindings. An
   activation binding applies even when the commit changes no paths. The shared
@@ -54,6 +56,21 @@ contract governs only what happens when maintenance runs.
   the registry declares to run while the daemon serves — Blueprint maintenance,
   publication and configuration-schema publication — which run after the
   window's verified start.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+- **Owed set.** The main-only maintenance actions selected by the merged
+  registry's path bindings and canonical-main activation bindings. An
+  activation binding applies even when the commit changes no paths. The shared
+  matcher owns this selection under
+  `local/projects/teleclaude/design/architecture/checkpoint-system`. Actions run
+  in declared precedence waves, where a precedence orders an action after the
+  actions whose effects it needs and after nothing else; a failure does not
+  cancel later waves. No owed action stops, starts or replaces the daemon: a
+  commit changes nothing live, and the install act is the only path to the
+  live platform (`local/projects/teleclaude/design/architecture/installation`).
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - **Recording outcome.** The activation boundary distinguishes an owed set
   durably recorded, an explicitly empty owed set, and a refused activation with
@@ -131,6 +148,8 @@ contract governs only what happens when maintenance runs.
   An interrupted attempt remains eligible for retry; each action converges
   safely when repeated after its effect preceded record removal.
 
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 - **Settlement announcement.** A commit activation of the canonical checkout
   is settled once every action it owes has a terminal outcome: success, or a
   failure that stays recorded; an activation that owes no action settles when
@@ -147,6 +166,25 @@ contract governs only what happens when maintenance runs.
   that settles while no daemon serves is announced once one does. A repeated
   announcement of one settlement carries the same event id, and settlements of
   different projects never share one. Event activations are not announced.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+- **Settlement announcement.** A commit activation of the canonical checkout
+  is settled once every action it owes has a terminal outcome: success, or a
+  failure that stays recorded; an activation that owes no action settles when
+  it is registered. Settling announces the activation's state as an
+  event of the `teleclaude.maintenance.activation` family in the checkout's
+  project, with the activated tip as its subject: `failed` when any owed
+  action failed terminally, naming each failed action with the command that
+  replays it, otherwise `succeeded`. A replay that completes the
+  failed actions settles the activation again and announces `succeeded` for the
+  same subject. Every settled activation's announcement stays held until it is
+  published, and holding a later one never drops an earlier one. An activation
+  that settles while no daemon serves is announced once one does. A repeated
+  announcement of one settlement carries the same event id, and settlements of
+  different projects never share one. Event activations are not announced.
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - **One-shot drain.** Every hook that records owed work starts a contender. One OS-owned file lock
   admits a single active drain; contenders wait for that lock, process pending
@@ -181,6 +219,8 @@ contract governs only what happens when maintenance runs.
   `telec repo maintenance status` names each event activation with that replay.
   An event activation records no integrator judgment: the maintenance an advance
   of canonical main owes is that advance's own activation.
+
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
 
 - **Replacement owed.** In a root whose registry declares the restart action,
   every activation whose changed paths select any maintenance action other than
@@ -271,6 +311,12 @@ contract governs only what happens when maintenance runs.
   reason and its time are also recorded where `make status` reports them until
   a later window verifies a start.
 
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
+
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
@@ -289,6 +335,31 @@ contract governs only what happens when maintenance runs.
   activation's settlement announcement, judges the relevant runtime evidence
   after owed actions complete, and owns bounded recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+- **Observation.** Every attempt and terminal outcome retains the immutable
+  activation and action identity in structured records. The commit boundary
+  records a checkout-scoped integrator judgment for every qualifying code
+  activation after its owed action records are durable, including a direct main
+  commit with no todo candidate. A runtime that an install activates records no
+  judgment at its project's commit: the installation inspector judges each
+  install (`local/projects/teleclaude/design/architecture/installation`). The
+  judgment retains the activation time and becomes eligible only after all owed
+  actions succeed; whether the runtime then behaves correctly belongs to the
+  integrator's log judgment, not to the action. The drain records the latest
+  maintenance-ready time on that marker; if interrupted before recording
+  readiness, the judgment stays outstanding for integrator recovery even when
+  action files are absent. A log read can discharge it only after that ready
+  time with a window covering the activation through completed maintenance.
+  Operational anomaly detection observes failed or stale actions. A regular
+  committer has no post-commit maintenance log judgment. The standing
+  integrator is woken by the activation's settlement announcement, judges the
+  relevant runtime evidence after owed actions complete, and owns bounded
+  recovery. The log bug hunter remains a later anomaly backstop. Maintenance
+  completion sends no notification to the committer.
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 ### Use cases
 
@@ -438,6 +509,8 @@ And operational anomaly detection can report it
 But the drain does not retry that terminal failure indefinitely
 ```
 
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 #### UC-PCM15: The standing integrator owns maintenance observation
 
 ```gherkin
@@ -448,6 +521,21 @@ And the standing integrator observes the owed action and judges its result after
 And later anomalies remain discoverable by the log bug hunter
 But maintenance completion sends no prompt to the committer
 ```
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+#### UC-PCM15: The standing integrator owns maintenance observation
+
+```gherkin
+Given a canonical-main change owes publication maintenance
+When Git returns before that maintenance finishes
+Then the regular committer has no maintenance log-check obligation
+And the standing integrator observes the owed action and judges its result after completion
+And later anomalies remain discoverable by the log bug hunter
+But maintenance completion sends no prompt to the committer
+```
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 #### UC-PCM16: Direct main commits reach the integrator through their settlement
 
@@ -482,6 +570,8 @@ And an agent reading the structured records observes the immutable range and the
 And no generated AGENTS.md beside those masters enters the commit, because the retained set does not admit it
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
+
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
 
 #### UC-PCM19: A restart owed by an integration does not close admission on that integration
 
@@ -655,6 +745,12 @@ And an agent reading the structured records observes the window closing before e
 And replaying either of them after a failure leaves the daemon serving
 ```
 
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
+
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 ## Known caveats
 
 - Nothing gates an advancement of the canonical checkout while the window
@@ -667,13 +763,24 @@ And replaying either of them after a failure leaves the daemon serving
   for that close, so the commit or merge whose hook records it returns only
   after the window's start has been verified or has failed.
 
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
+
 ## See Also
 
 - docs/local/adr/0087-mechanical-maintenance-executes-in-a-hook.md — the decision this contract realizes.
 - docs/local/adr/0100-commit-maintenance-drains-after-hook-return.md — why maintenance execution no longer holds Git open.
+
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 - docs/local/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window.md — why an activation owing a restart runs its steps against a stopped daemon.
 
 - docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that replace nothing the daemon runs on run after the window's verified start.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - docs/local/design/architecture/checkpoint-system.md — the matcher and registry this surface consumes.
 - docs/local/spec/feature/reconciliation/project-plumbing-convergence.md — which hooks a project has installed, and when.

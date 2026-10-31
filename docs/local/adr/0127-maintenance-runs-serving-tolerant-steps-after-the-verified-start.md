@@ -12,6 +12,9 @@ description: A maintenance run that replaces the daemon performs Blueprint maint
 Superseded in part by ADR-0129: the declaration is made per action in the
 platform base or a project overlay.
 
+Superseded by ADR-0130: a commit changes nothing live, so no maintenance run
+replaces the daemon and no step runs after a window's start.
+
 ## Context
 
 ADR-0124 made a maintenance run that owes the daemon's replacement a

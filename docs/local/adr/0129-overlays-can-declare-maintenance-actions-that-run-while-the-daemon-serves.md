@@ -7,6 +7,12 @@ description: Whether a maintenance action runs while the daemon serves is declar
 
 # Overlays Can Declare Maintenance Actions That Run While the Daemon Serves — ADR
 
+## Status
+
+Superseded by ADR-0130: a commit changes nothing live, so no maintenance run
+replaces the daemon and whether an action runs while the daemon serves no
+longer decides anything.
+
 ## Context
 
 ADR-0127 moved Blueprint maintenance and publication out of the stopped
