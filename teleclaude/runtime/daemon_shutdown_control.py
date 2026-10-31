@@ -8,8 +8,9 @@ caller acts only on a successful outcome. A window that expires on an instance t
 completes its own shutdown is a deferral, not a failure: the draining daemon finishes
 the restart once its accepted work settles.
 
-The read-only `status` verb reports the same observation for `make status`, and the read-only
-`degraded` verb the optional components the daemon serves without.
+The read-only `status` verb reports the same observation for `make status`, the read-only
+`degraded` verb the optional components the daemon serves without, and the read-only `ready` verb
+the event Redis scopes the daemon's readiness answer names as not answering.
 
 Maintenance callers that must not store configuration documents past what the running daemon reads
 ask `read_migration_reach` for the migration reach the daemon reports.
@@ -44,6 +45,7 @@ from teleclaude.core.shutdown_drain import PREPARATION_PROTOCOL_VERSION, DrainPh
 from teleclaude.paths import MAIN_DB_PATH
 
 _HEALTH_PATH = "/health"
+_READY_PATH = "/ready"
 _HEALTH_TIMEOUT_S = 2.0
 _POLL_INTERVAL_S = 0.5
 # Bounds how long a listening daemon may stay silent before its migration reach is treated as unanswered.
@@ -57,6 +59,8 @@ _MIGRATION_REACH_FIELD = "config_migration_reach"
 _MIGRATION_REACH_MALFORMED = "migration reach is malformed"
 _DEGRADED_FIELD = "degraded"
 _DEGRADED_MALFORMED = "degraded components are malformed"
+_READY_MALFORMED = "readiness answer is malformed"
+_SCOPE_FIELD = "scope"
 _STARTED_AT_FIELD = "preparation_started_at"
 _HELD_LABELS_FIELD = "held_labels"
 _GRACE_FIELD = "termination_grace_seconds"
@@ -166,11 +170,11 @@ class _UnixSocketConnection(http.client.HTTPConnection):
         self.sock.connect(self._socket_path)
 
 
-def read_health(socket_path: str) -> HealthObservation:
-    """Read and validate the daemon's health answer; any malformed answer is unreadable."""
+def _read_document(socket_path: str, path: str, name: str) -> object:
+    """GET one JSON document from the daemon's API socket; anything but a 200 JSON answer is unreadable."""
     connection = _UnixSocketConnection(socket_path, _HEALTH_TIMEOUT_S)
     try:
-        connection.request("GET", _HEALTH_PATH)
+        connection.request("GET", path)
         response = connection.getresponse()
         body = response.read()
         status = response.status
@@ -181,11 +185,16 @@ def read_health(socket_path: str) -> HealthObservation:
     finally:
         connection.close()
     if status != http.HTTPStatus.OK:
-        raise ControlRefusal(ControlOutcome.UNREADABLE, f"health answered {status}")
+        raise ControlRefusal(ControlOutcome.UNREADABLE, f"{name} answered {status}")
     try:
-        document = json.loads(body)
+        return json.loads(body)
     except json.JSONDecodeError as exc:
-        raise ControlRefusal(ControlOutcome.UNREADABLE, "health answer is not JSON") from exc
+        raise ControlRefusal(ControlOutcome.UNREADABLE, f"{name} answer is not JSON") from exc
+
+
+def read_health(socket_path: str) -> HealthObservation:
+    """Read and validate the daemon's health answer; any malformed answer is unreadable."""
+    document = _read_document(socket_path, _HEALTH_PATH, "health")
     if not isinstance(document, dict) or document.get(_STATUS_FIELD) != _HEALTH_STATUS_OK:
         raise ControlRefusal(ControlOutcome.UNREADABLE, "health answer is not an ok document")
     raw_preparation = document.get(_PREPARATION_FIELD)
@@ -346,6 +355,25 @@ def report_degraded(socket_path: str) -> int:
     return int(ControlOutcome.DEGRADED) if degraded else int(ControlOutcome.OK)
 
 
+def report_readiness(socket_path: str) -> int:
+    """Print each event Redis scope the daemon's readiness answer names as not answering; OK only when none."""
+    document = _read_document(socket_path, _READY_PATH, "readiness")
+    if not isinstance(document, dict):
+        raise ControlRefusal(ControlOutcome.UNREADABLE, _READY_MALFORMED)
+    entries = document.get(_DEGRADED_FIELD, [])
+    if not isinstance(entries, list):
+        raise ControlRefusal(ControlOutcome.UNREADABLE, _READY_MALFORMED)
+    scopes: list[str] = []
+    for entry in entries:
+        scope = entry.get(_SCOPE_FIELD) if isinstance(entry, dict) else None
+        if not isinstance(scope, str):
+            raise ControlRefusal(ControlOutcome.UNREADABLE, _READY_MALFORMED)
+        scopes.append(scope)
+    for scope in scopes:
+        print(scope)
+    return int(ControlOutcome.DEGRADED) if scopes else int(ControlOutcome.OK)
+
+
 def quiesce_legacy(socket_path: str, manager_pid: int, pid_file: str | None) -> int:
     """Return the pid of the positively identified legacy daemon whose durable work is quiescent."""
     pid = _identify_legacy(socket_path, manager_pid, pid_file)
@@ -410,6 +438,7 @@ class _Verb(StrEnum):
     LEGACY = "legacy"
     STATUS = "status"
     DEGRADED = "degraded"
+    READY = "ready"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -420,13 +449,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--manager-pid", type=int)
     parser.add_argument("--pid-file")
     args = parser.parse_args(argv)
-    if args.verb not in (_Verb.STATUS, _Verb.DEGRADED) and args.manager_pid is None:
+    if args.verb not in (_Verb.STATUS, _Verb.DEGRADED, _Verb.READY) and args.manager_pid is None:
         parser.error(_MANAGER_PID_REQUIRED.format(verb=args.verb))
     try:
         if args.verb == _Verb.STATUS:
             return report_admission(args.socket)
         if args.verb == _Verb.DEGRADED:
             return report_degraded(args.socket)
+        if args.verb == _Verb.READY:
+            return report_readiness(args.socket)
         if args.verb == _Verb.PREPARE:
             pid = prepare(args.socket, args.manager_pid)
         else:

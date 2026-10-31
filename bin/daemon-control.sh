@@ -548,39 +548,29 @@ except Exception:
 PY
 }
 
-# Report the daemon's readiness for start and status, from the /ready body:
-#   ok                    ready, and no Redis is named as not answering
-#   degraded:<scopes>     ready and serving, with the comma-separated scopes whose Redis does not answer
-#   unready               not ready, or the body cannot be read
-# The body names scopes only; it never carries a Redis URL or credential.
-ready_state() {
-    python3 - "$API_SOCKET" <<'PY' 2>/dev/null || echo "unready"
-import json
-import socket
-import sys
-
-try:
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(1.0)
-    s.connect(sys.argv[1])
-    s.sendall(b"GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
-    data = b""
-    while True:
-        chunk = s.recv(4096)
-        if not chunk:
-            break
-        data += chunk
-    s.close()
-    head, _, body = data.partition(b"\r\n\r\n")
-    parts = head.split(b"\r\n", 1)[0].decode("utf-8", "ignore").split()
-    if len(parts) < 2 or parts[1] != "200":
-        print("unready")
-    else:
-        scopes = [entry["scope"] for entry in json.loads(body).get("degraded", [])]
-        print("degraded:" + ",".join(scopes) if scopes else "ok")
-except Exception:
-    print("unready")
-PY
+# Report the event Redis scopes the daemon's /ready names as not answering; returns 1 while any does not
+# answer or the answer cannot be read. The names are scopes only; /ready never carries a Redis URL or credential.
+report_event_redis() {
+    local output
+    local rc=0
+    if [ ! -x "$DAEMON_CONTROL_PYTHON" ]; then
+        return 1
+    fi
+    output="$(PYTHONPATH="$PROJECT_ROOT" "$DAEMON_CONTROL_PYTHON" -m teleclaude.runtime.daemon_shutdown_control \
+        ready --socket "$API_SOCKET" 2>&1)" || rc=$?
+    case "$rc" in
+        0)
+            log_info "Event Redis: answering"
+            ;;
+        "$DEGRADED_EXIT")
+            log_warn "Event Redis not answering ($(echo "$output" | paste -sd, -)): the daemon serves degraded and attaches those readers when it answers"
+            return 1
+            ;;
+        *)
+            log_warn "Event Redis: readiness UNREADABLE ($output)"
+            return 1
+            ;;
+    esac
 }
 
 # Poll the readiness endpoint until the daemon answers /ready, or a bounded window
@@ -681,12 +671,7 @@ start_daemon() {
             log_error "Check logs: instrukt-ai-logs teleclaude --since 5m (see 'telec config wizard' for the Redis settings)"
             return 1
         fi
-        READY_STATE=$(ready_state)
-        case "$READY_STATE" in
-            degraded:*)
-                log_warn "Event Redis not answering (${READY_STATE#degraded:}): the daemon serves degraded and attaches those readers when it answers"
-                ;;
-        esac
+        report_event_redis || true
         if [ "$PLATFORM" != "macos" ]; then
             if ! _tc_sudo "enable and start the periodic job timer" systemctl enable --now "$CRON_TIMER_UNIT"; then
                 stop_startup_log_stream
@@ -1124,20 +1109,7 @@ PY
             if [ "$API_HEALTH" = "ok" ]; then
                 log_info "API /health: OK"
                 report_admission_state || overall_ok=1
-                READY_STATE=$(ready_state)
-                case "$READY_STATE" in
-                    ok)
-                        log_info "Event Redis: answering"
-                        ;;
-                    degraded:*)
-                        log_warn "Event Redis: NOT ANSWERING (${READY_STATE#degraded:}); the daemon serves degraded"
-                        overall_ok=1
-                        ;;
-                    *)
-                        log_warn "Event Redis: readiness UNREADABLE (/ready is not ready)"
-                        overall_ok=1
-                        ;;
-                esac
+                report_event_redis || overall_ok=1
                 report_degraded_components || overall_ok=1
             else
                 log_warn "API /health: FAIL"
