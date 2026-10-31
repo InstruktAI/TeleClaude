@@ -42,6 +42,17 @@ an error that names the computer and the reason — an offline computer as one t
 did not answer — and nothing runs anywhere: an offline computer refuses the request
 when it reads it after the request's deadline.
 
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+**A computer cut off from the cluster says so at once.** While the requesting
+computer cannot reach the cluster Redis, a request addressed to another
+computer fails immediately, without waiting out its deadline, with an error
+that names the computer and the unreachable cluster Redis as the reason, and
+nothing runs anywhere. A person-addressed message is the one request that waits
+instead (`local/projects/teleclaude/spec/messaging`, The master sends).
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 **Outside the rule.** A request about the caller's own session or about the
 daemon itself names no computer. Commands that act on the invoking checkout —
 code, formatting, and registering the folder they are invoked in as a project —

@@ -36,6 +36,8 @@ service resolves the recipients and dispatches through the existing outbound
 provider primitives (`local/projects/teleclaude/spec/feature/integration/outbound-messaging-providers`)
 — the same layer the invitation flow uses. No new transport exists.
 
+<!-- planned-change:cluster-redis-outage-store-and-forward -->
+
 **The master sends.** The person-facing provider sections are master-scoped
 (`local/projects/teleclaude/spec/teleclaude-config`), so the master is the one
 computer in the fleet that holds a sending credential. A request made on any
@@ -46,6 +48,25 @@ requesting computer holds: the content of the file `--file` names there, and
 the originating session's Discord backlink. The caller addresses a person,
 never a computer. When no master is reachable the request fails with that
 error; no other computer sends in its place.
+
+<!-- change:cluster-redis-outage-store-and-forward -->
+
+**The master sends.** The person-facing provider sections are master-scoped
+(`local/projects/teleclaude/spec/teleclaude-config`), so the master is the one
+computer in the fleet that holds a sending credential. A request made on any
+other computer is carried to the master by the requesting daemon over the
+computer-addressed relay, executed there, and the master's outcome is returned
+to the caller as the outcome of the request. The request carries what only the
+requesting computer holds: the content of the file `--file` names there, and
+the originating session's Discord backlink. The caller addresses a person,
+never a computer. While the requesting computer cannot reach the cluster Redis,
+the request is held there with what it carries: the caller is told that the
+message waits for the master, the request is carried once the master is
+reachable, and the master's outcome, a refusal included, is reported to the
+caller once it is known. When the cluster Redis answers and no master is live,
+the request fails with that error; no other computer sends in its place.
+
+<!-- /planned-change:cluster-redis-outage-store-and-forward -->
 
 **Recipients.** `--recipient` names one person by slug. Without it, the
 recipients are resolved from the caller's authority, as
