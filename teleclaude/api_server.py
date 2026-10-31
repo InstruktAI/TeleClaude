@@ -55,6 +55,8 @@ from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
 from teleclaude.api.hang_dump import (
     INFLIGHT_REQUEST,
+    HangDumpResult,
+    HangSnapshot,
     OverdueRequest,
     capture_hang_state,
     hang_dump_dir,
@@ -157,6 +159,44 @@ _METRICS_SAMPLE_FAILED_LOG = "API server metrics sample failed"
 _METRICS_TASK = "api-metrics"
 _WATCH_TASK = "api-watch-loop"
 _MCP_REAPER_TASK = "api-mcp-reaper"
+
+
+async def _write_outcome(directory: Path, snapshot: HangSnapshot) -> HangDumpResult | OSError:
+    """Persist a snapshot and return the filesystem failure instead of raising it."""
+    try:
+        return await write_hang_dump(directory, snapshot)
+    except OSError as exc:
+        return exc
+
+
+def _log_dump_outcome(
+    reason: str,
+    overdue: int,
+    directory: Path,
+    started: float,
+    captured: float,
+    outcome: HangDumpResult | OSError,
+) -> None:
+    """Log where a published dump is, or why none could be written."""
+    if isinstance(outcome, OSError):
+        logger.error(
+            "API watch dump failed",
+            error_type=type(outcome).__name__,
+            errno=outcome.errno,
+            error=str(outcome),
+            path=str(outcome.filename or directory),
+        )
+        return
+    logger.error(
+        "API HANG_DUMP",
+        reason=reason,
+        path=str(outcome.path),
+        overdue=overdue,
+        threads=outcome.threads,
+        tasks=outcome.tasks,
+        capture_ms=round((captured - started) * 1000.0, 1),
+        dump_ms=round((time.monotonic() - started) * 1000.0, 1),
+    )
 
 
 class RequestSurface(StrEnum):
@@ -713,27 +753,14 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         directory = hang_dump_dir()
         snapshot = capture_hang_state(reason, overdue)
         captured = time.monotonic()
+        # Shielded: cancelling the watch (shutdown) must not leave a dump that is published without its record.
+        persist = asyncio.ensure_future(_write_outcome(directory, snapshot))
         try:
-            result = await write_hang_dump(directory, snapshot)
-        except OSError as exc:
-            logger.error(
-                "API watch dump failed",
-                error_type=type(exc).__name__,
-                errno=exc.errno,
-                error=str(exc),
-                path=str(exc.filename or directory),
-            )
-            return True
-        logger.error(
-            "API HANG_DUMP",
-            reason=reason,
-            path=str(result.path),
-            overdue=len(overdue),
-            threads=result.threads,
-            tasks=result.tasks,
-            capture_ms=round((captured - started) * 1000.0, 1),
-            dump_ms=round((time.monotonic() - started) * 1000.0, 1),
-        )
+            outcome = await asyncio.shield(persist)
+        except asyncio.CancelledError:
+            _log_dump_outcome(reason, len(overdue), directory, started, captured, await persist)
+            raise
+        _log_dump_outcome(reason, len(overdue), directory, started, captured, outcome)
         return True
 
     async def _watch_loop(self) -> None:
