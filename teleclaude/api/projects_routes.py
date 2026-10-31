@@ -63,7 +63,6 @@ _PROJECT_PATH_FILE_WORK_FEEDBACK = "Project adoption needs a directory; choose a
 _PROJECT_IDENTITY_CONFLICT_WORK_FEEDBACK = "Another registered project already owns this project identity; use its existing entry or choose a different folder."
 _PROJECT_PATH_CREATE_FAILED = "project folder could not be created"
 _PROJECT_REFRESH_UNAVAILABLE = "project refresh is not configured"
-_PROJECT_DEGRADATIONS_UNAVAILABLE = "project listing is not configured with the daemon's degradation record"
 _PROJECT_ADOPTION_FAILED = "project adoption failed: {reason}"
 _PROJECT_ADOPTION_INTERNAL_FAILED = "project adoption failed"
 _PROJECT_ENTRY_MISSING = "adopted project is missing from the refreshed registry"
@@ -163,7 +162,7 @@ async def list_projects(
                 logger.info("GET /projects: cache MISS, reading filesystem")
                 degradations = _DEGRADATIONS["value"]
                 if degradations is None:
-                    raise RuntimeError(_PROJECT_DEGRADATIONS_UNAVAILABLE)
+                    raise RuntimeError("project listing is not configured with the daemon's degradation record")
                 raw_projects = await command_handlers.list_projects_with_todos(degradations)
                 if cache:
                     cache.apply_projects_snapshot(computer_name, raw_projects)
