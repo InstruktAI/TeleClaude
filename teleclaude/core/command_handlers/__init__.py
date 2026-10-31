@@ -29,6 +29,7 @@ from ._message import (
     notify_delivery_exhausted,
     process_message,
 )
+from ._projects import list_projects, list_projects_with_todos, list_todos
 from ._restart import agent_restart
 from ._session import (
     close_session,
@@ -36,10 +37,7 @@ from ._session import (
     end_session,
     get_computer_info,
     get_session_data,
-    list_projects,
-    list_projects_with_todos,
     list_sessions,
-    list_todos,
 )
 from ._session_identity import SessionCreationRefused, resolve_working_slug_from_subdir
 from ._utils import (

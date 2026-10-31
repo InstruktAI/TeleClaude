@@ -58,6 +58,7 @@ DAEMON_CONTROL_PYTHON="$PROJECT_ROOT/.venv/bin/python"
 PREPARE_UNSUPPORTED_EXIT=10
 PREPARE_DEFERRED_EXIT=15
 ADMISSION_CLOSED_EXIT=16
+DEGRADED_EXIT=17
 # prepare_daemon_for_shutdown return code for a window that expired on a daemon that completes its
 # own shutdown once its accepted work settles (0 prepared, 1 withheld, 2 not running).
 PREPARE_DEFERRED_RETURN=3
@@ -730,6 +731,36 @@ report_admission_state() {
     esac
 }
 
+# Report the optional components the daemon serves without; returns 1 while any is degraded.
+report_degraded_components() {
+    local output
+    local rc=0
+    if [ ! -x "$DAEMON_CONTROL_PYTHON" ]; then
+        return 1
+    fi
+    output="$(PYTHONPATH="$PROJECT_ROOT" "$DAEMON_CONTROL_PYTHON" -m teleclaude.runtime.daemon_shutdown_control \
+        degraded --socket "$API_SOCKET" 2>&1)" || rc=$?
+    case "$rc" in
+        0)
+            log_info "Optional components: OK"
+            ;;
+        "$DEGRADED_EXIT")
+            log_warn "Optional components: DEGRADED"
+            while IFS= read -r line; do
+                log_warn "  $line"
+            done <<<"$output"
+            return 1
+            ;;
+        "$PREPARE_UNSUPPORTED_EXIT")
+            log_info "Optional components: not reported (the running daemon predates degradation reporting)"
+            ;;
+        *)
+            log_warn "Optional components: UNREADABLE ($output)"
+            return 1
+            ;;
+    esac
+}
+
 # Prepare the running daemon before any service-manager action.
 # Returns 0 and sets PREPARED_PID when that exact instance reported drained (or, with
 # LEGACY_ACTIVATION=1, when a positively identified legacy runtime is observed quiescent);
@@ -1051,6 +1082,7 @@ PY
             if [ "$API_HEALTH" = "ok" ]; then
                 log_info "API /health: OK"
                 report_admission_state || overall_ok=1
+                report_degraded_components || overall_ok=1
             else
                 log_warn "API /health: FAIL"
                 overall_ok=1
