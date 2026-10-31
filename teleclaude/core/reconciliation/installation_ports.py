@@ -16,7 +16,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui.processes import live_tui_start_commits, signal_tui_reload
-from teleclaude.constants import API_SOCKET_PATH
+from teleclaude.constants import API_SOCKET_PATH, PLUMBING_MODULE
 from teleclaude.core.integration.daemon_window import (
     Lifecycle,
     StopAttempt,
@@ -67,7 +67,6 @@ _LOCAL_REDIS_PREPARE_FAILED_EVENT = "install_local_redis_preparation_failed"
 _MIGRATE_CERTAIN_FAILURES = frozenset({MigrationExitCode.FAILED, COMMAND_START_FAILURE_EXIT_CODE})
 _PUBLICATION_MODULE = "teleclaude.entrypoints.install_publication"
 _SCHEMA_MODULE = "teleclaude.core.reconciliation.config_schemas"
-_PLUMBING_MODULE = "teleclaude.project_setup.plumbing"
 _RELEASE_OPTION = "--release"
 _PUBLISH_TIMEOUT_SECONDS = 900.0
 # A release that ships the receiver's socket unit runs a receiver that adopts the socket its unit holds; an earlier
@@ -292,7 +291,7 @@ class LiveInstallPorts:
         for arguments in (
             (_MODULE_OPTION, _PUBLICATION_MODULE, _RELEASE_OPTION, str(release)),
             (_MODULE_OPTION, _SCHEMA_MODULE),
-            (_MODULE_OPTION, _PLUMBING_MODULE),
+            (_MODULE_OPTION, PLUMBING_MODULE),
         ):
             result = run_process_group_command(
                 [python, *arguments],
