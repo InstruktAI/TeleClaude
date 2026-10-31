@@ -2,7 +2,7 @@
 
 Each scan runs two isolated phases: claiming missing-signal observations for
 silent targets, and reconciling a turn end the runtime completed but never
-reported while control payloads wait on it.
+reported while control payloads or procedure events wait on it.
 """
 
 from __future__ import annotations
@@ -193,14 +193,22 @@ async def _claim_silence_observations(coordinator: AgentStatusNotifier, *, at: d
 
 
 async def _reconcile_lost_turn_ends(coordinator: AgentStatusNotifier) -> int:
-    """Record the provider-completed turn end of each session still believed running with payloads waiting.
+    """Record the provider-completed turn end of each session still believed running with work waiting.
+
+    Waiting work is an undelivered control payload or a pending assigned procedure event.
 
     The snapshot is read first, then the native evidence, then the hook-ingress
     answer, so the coordinator's conditional commit rejects anything that
     happened after the snapshot.
     """
     reconciled_count = 0
-    for session_id in await db.fetch_sessions_with_pending_control_payloads():
+    waiting_sessions = dict.fromkeys(
+        [
+            *await db.fetch_sessions_with_pending_control_payloads(),
+            *await db.fetch_sessions_with_pending_procedure_events(),
+        ]
+    )
+    for session_id in waiting_sessions:
         try:
             session = await db.get_session(session_id)
             if (
