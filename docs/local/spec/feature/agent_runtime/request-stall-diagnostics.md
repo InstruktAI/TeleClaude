@@ -26,8 +26,8 @@ request was waiting, using the daemon log and ordinary file reads.
 Each dump is announced by one error record in the daemon log. The record carries
 the reason the watch fired and the path of the dump's file, and stays within the
 log's message cap: the dump itself never travels in a log message. A dump that
-cannot be written is logged as an error with its cause, and the watch keeps
-running.
+cannot be written is logged as an error naming the failed operation's cause and
+path, and the watch keeps running.
 
 ### The dump file
 
@@ -40,9 +40,10 @@ Each dump is a file of its own and holds:
   the object it waits on, with each task that serves an overdue request
   labelled with that request.
 
-A dump file appears under its final name only once it is complete and on disk,
-and the log record is written after that. A forced kill or machine reset after
-the record therefore keeps the dump.
+A dump file appears under its final name only once it is complete, and the log
+record is written after that. A forced kill of the service process after the
+record therefore keeps the dump. Persisting a dump never holds the event loop
+that serves requests.
 
 ### Frequency and retention
 
@@ -56,3 +57,5 @@ disk. A log record can name a dump that has since been deleted.
   on the loop it watches, so it never captures the frame that blocked the loop.
 - A dump records code locations, thread names, task names and the types of
   awaited objects. It records no variable values and no request content.
+- A dump is not synchronized to the storage device. A machine reset soon after
+  a dump can lose it.
