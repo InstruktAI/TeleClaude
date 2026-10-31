@@ -68,7 +68,20 @@ def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
         binding_disposition=row.binding_disposition,
         reflection_claimed_at=row.reflection_claimed_at,
         locked_at=row.locked_at,
+        accepted_input_at=row.accepted_input_at,
+        accepted_runtime_turn_id=row.accepted_runtime_turn_id,
     )
+
+
+@dataclass(frozen=True)
+class InboundAcceptanceEvidence:
+    """The session clock instant and runtime turn identity recorded when a row was accepted.
+
+    ``runtime_turn_id`` is ``None`` when the session had no native turn identity at acceptance.
+    """
+
+    accepted_input_at: datetime
+    runtime_turn_id: str | None
 
 
 @dataclass(frozen=True)
@@ -480,10 +493,52 @@ class DbInboundMixin:
             rows = result.all()
             return [_decode_inbound_row(row) for row in rows]
 
-    async def get_inbound_row(self, row_id: int) -> db_models.InboundQueue | None:
-        """Fetch one accepted inbound row by id, including its caller-provenance columns."""
+    async def get_inbound_row(self, row_id: int) -> InboundQueueRow | None:
+        """Fetch one accepted inbound row by id, read fresh, including its caller-provenance columns."""
         async with self._session() as db_session:
-            return await db_session.get(db_models.InboundQueue, row_id)
+            row = await db_session.get(db_models.InboundQueue, row_id)
+            return _decode_inbound_row(row) if row is not None else None
+
+    async def record_inbound_acceptance_evidence(
+        self,
+        row_id: int,
+        *,
+        accepted_input_at: datetime,
+        runtime_turn_id: str | None,
+    ) -> None:
+        """Record on one row, in a single update, the session clock instant and turn identity of its acceptance."""
+        stmt = (
+            update(db_models.InboundQueue)
+            .where(db_models.InboundQueue.id == row_id)
+            .values(
+                accepted_input_at=accepted_input_at.isoformat(),
+                accepted_runtime_turn_id=runtime_turn_id,
+            )
+        )
+        async with self._session() as db_session:
+            await db_session.exec(stmt)
+            await db_session.commit()
+
+    async def get_inbound_acceptance_evidence(self, row_id: int) -> InboundAcceptanceEvidence | None:
+        """Read a row's recorded acceptance evidence fresh; ``None`` when none was recorded.
+
+        The instant is present exactly when the pair was recorded, so a legitimately null turn identity is
+        distinguishable from missing evidence.
+        """
+        async with self._session() as db_session:
+            result = await db_session.exec(
+                select(
+                    db_models.InboundQueue.accepted_input_at,
+                    db_models.InboundQueue.accepted_runtime_turn_id,
+                ).where(db_models.InboundQueue.id == row_id)
+            )
+            recorded = result.first()
+        if recorded is None or recorded[0] is None:
+            return None
+        accepted_input_at = parse_iso_datetime(recorded[0])
+        if accepted_input_at is None:
+            return None
+        return InboundAcceptanceEvidence(accepted_input_at=accepted_input_at, runtime_turn_id=recorded[1])
 
     async def get_unbound_delivered_caller_inbound(self, session_id: str) -> list[InboundQueueRow]:
         """Return post-cutover caller receipts awaiting a native-entry binding."""
