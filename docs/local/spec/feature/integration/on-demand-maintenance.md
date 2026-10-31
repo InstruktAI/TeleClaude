@@ -233,11 +233,10 @@ Scenario: Continue maintenance after a step fails
   Then every later step is still attempted
   And the run reports the failure and exits unsuccessfully
 
-Scenario: Keep uncommitted changes out of publication
+Scenario: See uncommitted changes before the steps run
   Given the root's working tree has uncommitted edits
   When an operator runs `telec sync`
   Then the changed paths and known holders are reported before the first step
-  And publication uses committed source and does not publish the uncommitted edits
 
 Scenario: Leave other running services alone
   Given installation would deploy a changed definition for another running service

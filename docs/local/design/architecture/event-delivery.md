@@ -258,8 +258,6 @@ ordering guarantee for these separate transports.
 - Earlier peers retain their declared interoperability limits. Adapting their
   envelopes does not establish source ordering absent from their records.
 
-<!-- planned:daemon-startup-aborts-without-redis -->
-
 - A Redis that stops answering does not end the readers on it. Each Redis has
   one record of whether it answers, whose loss and return are logged once each.
   A retained consumer's reader waits on that record and then resumes from its
@@ -274,8 +272,6 @@ ordering guarantee for these separate transports.
   from it; one whose group is new starts at that moment, so it omits what that
   Redis took in before.
 
-<!-- /planned:daemon-startup-aborts-without-redis -->
-
 ## See Also
 
 - docs/local/adr/0116-each-reaction-to-a-platform-event-is-an-independent-consumer.md
@@ -284,11 +280,7 @@ ordering guarantee for these separate transports.
 - docs/local/adr/0143-teleclaude-runs-its-own-local-redis-on-every-computer.md — why the local Redis is TeleClaude's own instance on every computer, the cluster host included.
 - docs/local/adr/0144-a-fleets-cluster-redis-is-provided-or-provisioned-on-its-master.md — why a lone computer's cluster Redis is its local Redis.
 
-<!-- planned:daemon-startup-aborts-without-redis -->
-
 - docs/local/adr/0145-a-computer-keeps-working-while-its-cluster-redis-is-unreachable.md — why a computer starts and serves while its cluster Redis is unreachable.
-
-<!-- /planned:daemon-startup-aborts-without-redis -->
 
 - docs/local/design/architecture/cache.md
 - docs/local/design/architecture/api-server.md

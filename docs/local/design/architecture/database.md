@@ -23,15 +23,7 @@ visibility: public
 - **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 - **Bounded Runtime State**: Operational rows are retained only while live or within the runtime retention window. Closed sessions, terminal queue rows, stale mappings, resolved event notifications, reviewed quarantines, session scratch directories, and session-owned workspaces are pruned by daemon maintenance.
 
-<!-- planned-change:accepted-turn-bindings-never-form -->
-
-- **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. An inbound row is never pruned before its binding is durable, and cleanup never creates a gap in which neither the accepted row nor its binding can identify the turn.
-
-<!-- change:accepted-turn-bindings-never-form -->
-
 - **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. Cleanup never removes an accepted inbound row that its session's projection can still bind before that binding is durable; which rows that protects, and for how long, is the inbound queue's Cleanup (`local/projects/teleclaude/spec/inbound-queue`).
-
-<!-- /planned-change:accepted-turn-bindings-never-form -->
 
 - **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
 
