@@ -15,18 +15,44 @@ from __future__ import annotations
 
 import aiosqlite
 
-_COLUMNS_SQL = 'SELECT name, "notnull" FROM pragma_table_info(?)'
-_TABLE_SQL = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?"
-
 _BINDINGS = "accepted_turn_bindings"
 _RECEIPTS = "turn_receipt_envelopes"
 _PARTS = "turn_authored_parts"
 
 _NATIVE_IDENTITY_COLUMNS = ("native_runtime", "native_session_id", "native_entry_id")
-_RECEIPT_ORDER_COLUMN = "envelope_index"
-_CALLER_PART_KIND = "'caller'"
 
-_CREATE_BINDINGS_SQL = """
+
+async def _columns(db: aiosqlite.Connection, table: str) -> dict[str, bool]:
+    """Return each column of ``table`` with whether it is declared NOT NULL; empty when the table is absent."""
+    async with db.execute('SELECT name, "notnull" FROM pragma_table_info(?)', (table,)) as cursor:  # guard: raw-sql
+        return {str(row[0]): bool(row[1]) for row in await cursor.fetchall()}
+
+
+async def _bindings_are_stale(db: aiosqlite.Connection) -> bool:
+    """Whether the root table lets its native identity be NULL."""
+    columns = await _columns(db, _BINDINGS)
+    return bool(columns) and not all(columns.get(name, False) for name in _NATIVE_IDENTITY_COLUMNS)
+
+
+async def _receipts_are_stale(db: aiosqlite.Connection) -> bool:
+    """Whether the receipt table lacks the envelope order column."""
+    columns = await _columns(db, _RECEIPTS)
+    return bool(columns) and "envelope_index" not in columns
+
+
+async def _parts_are_stale(db: aiosqlite.Connection) -> bool:
+    """Whether the parts table's ``part_kind`` constraint does not admit ``caller``."""
+    async with db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", (_PARTS,)
+    ) as cursor:  # guard: raw-sql
+        row = await cursor.fetchone()
+    return row is not None and "'caller'" not in str(row[0])
+
+
+async def _create_bindings(db: aiosqlite.Connection) -> None:
+    """Create the root table and its session index at the shape ``schema.sql`` declares."""
+    await db.executescript(
+        """
 CREATE TABLE accepted_turn_bindings (
     binding_id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -38,7 +64,13 @@ CREATE TABLE accepted_turn_bindings (
 );
 CREATE INDEX IF NOT EXISTS idx_accepted_turn_bindings_session ON accepted_turn_bindings(session_id, created_at);
 """
-_CREATE_RECEIPTS_SQL = """
+    )  # guard: raw-sql
+
+
+async def _create_receipts(db: aiosqlite.Connection) -> None:
+    """Create the receipt table and its binding index at the shape ``schema.sql`` declares."""
+    await db.executescript(
+        """
 CREATE TABLE turn_receipt_envelopes (
     binding_id TEXT NOT NULL,
     inbound_queue_id INTEGER NOT NULL,
@@ -56,7 +88,13 @@ CREATE TABLE turn_receipt_envelopes (
 );
 CREATE INDEX IF NOT EXISTS idx_turn_receipt_envelopes_binding ON turn_receipt_envelopes(binding_id);
 """
-_CREATE_PARTS_SQL = """
+    )  # guard: raw-sql
+
+
+async def _create_parts(db: aiosqlite.Connection) -> None:
+    """Create the parts table at the shape ``schema.sql`` declares."""
+    await db.executescript(
+        """
 CREATE TABLE turn_authored_parts (
     binding_id TEXT NOT NULL,
     part_id INTEGER NOT NULL,
@@ -74,31 +112,7 @@ CREATE TABLE turn_authored_parts (
     FOREIGN KEY (binding_id) REFERENCES accepted_turn_bindings(binding_id) ON DELETE CASCADE
 );
 """
-
-
-async def _columns(db: aiosqlite.Connection, table: str) -> dict[str, bool]:
-    """Return each column of ``table`` with whether it is declared NOT NULL; empty when the table is absent."""
-    async with db.execute(_COLUMNS_SQL, (table,)) as cursor:  # guard: raw-sql
-        return {str(row[0]): bool(row[1]) for row in await cursor.fetchall()}
-
-
-async def _bindings_are_stale(db: aiosqlite.Connection) -> bool:
-    """Whether the root table lets its native identity be NULL."""
-    columns = await _columns(db, _BINDINGS)
-    return bool(columns) and not all(columns.get(name, False) for name in _NATIVE_IDENTITY_COLUMNS)
-
-
-async def _receipts_are_stale(db: aiosqlite.Connection) -> bool:
-    """Whether the receipt table lacks the envelope order column."""
-    columns = await _columns(db, _RECEIPTS)
-    return bool(columns) and _RECEIPT_ORDER_COLUMN not in columns
-
-
-async def _parts_are_stale(db: aiosqlite.Connection) -> bool:
-    """Whether the parts table's ``part_kind`` constraint does not admit ``caller``."""
-    async with db.execute(_TABLE_SQL, (_PARTS,)) as cursor:  # guard: raw-sql
-        row = await cursor.fetchone()
-    return row is not None and _CALLER_PART_KIND not in str(row[0])
+    )  # guard: raw-sql
 
 
 async def up(db: aiosqlite.Connection) -> None:
@@ -112,11 +126,11 @@ async def up(db: aiosqlite.Connection) -> None:
         await db.execute(f"DROP TABLE {_PARTS}")  # guard: raw-sql
     if bindings_stale:
         await db.execute(f"DROP TABLE {_BINDINGS}")  # guard: raw-sql
-        await db.executescript(_CREATE_BINDINGS_SQL)  # guard: raw-sql
+        await _create_bindings(db)
     if receipts_stale:
-        await db.executescript(_CREATE_RECEIPTS_SQL)  # guard: raw-sql
+        await _create_receipts(db)
     if parts_stale:
-        await db.executescript(_CREATE_PARTS_SQL)  # guard: raw-sql
+        await _create_parts(db)
     await db.commit()
 
 
