@@ -117,8 +117,4 @@ sequenceDiagram
 - **Pane Not Found**: Input injection fails because pane already closed. Returns error but doesn't crash daemon.
 - **TMPDIR Conflict**: Multiple sessions with same ID prefix (first 8 chars) collide. Extremely rare. Sessions interfere with each other's temp files.
 
-<!-- planned:restart-relaunch-fuses-shell-line -->
-
 - **Occupied Shell Input**: Shell readiness reads only the foreground program's name, so a shell whose editing buffer already holds unsubmitted text — typed through an attached terminal, for example — reads as ready. A launch command pasted and submitted there joins that text into one command line, and what the shell then runs depends on that text: it may fail, run something else, or start an agent with the wrong arguments. When the pending text is itself a command ending in an argument, as an earlier agent launch is, the launch's leading environment assignment becomes part of that argument and the agent runs under an identity other than the one registered for the launch, so the session record no longer matches the running agent. Agent restart discards the shell's pending input, leaving any pane mode first, before it places its relaunch command; input that arrives between that discard and the placement still joins the command. The other launch paths place their command without discarding pending input.
-
-<!-- /planned:restart-relaunch-fuses-shell-line -->

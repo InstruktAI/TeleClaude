@@ -36,6 +36,7 @@ from teleclaude.core.session_launch_profile import resolve_session_launch_profil
 from teleclaude.core.session_lifecycle import LifecycleTransition, LifecycleTransitionReason, transition_session
 from teleclaude.core.session_runtime_gate import mark_relaunch_awaiting_readiness, session_runtime_owner
 from teleclaude.core.session_status import SessionLifecycleStatus
+from teleclaude.core.tmux_bridge._keys import discard_shell_input
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.envelope_facts import home_for_session_config
@@ -81,6 +82,7 @@ class RestartFailurePhase(StrEnum):
     STOP_TIMEOUT = "stop_timeout"
     AGENT_DISABLED = "agent_disabled"
     READINESS_TIMEOUT = "readiness_timeout"
+    INPUT_DISCARD_FAILED = "input_discard_failed"
 
 
 async def _emit_restart_failed(session: Session, *, reason: str, phase: RestartFailurePhase) -> None:
@@ -363,6 +365,16 @@ async def _restart_agent(
         kill_returncode=stop_attempt.kill_returncode,
         elapsed_ms=stop_elapsed_ms,
     )
+
+    # The shell is the foreground program now, so an interrupt reaches only it. Clear any
+    # unsubmitted input before the run is registered, so the relaunch command cannot fuse
+    # onto it and an abort leaves no registered run behind.
+    if not await discard_shell_input(session.tmux_session_name):
+        error = "Could not clear the host shell's pending input. Restart aborted."
+        await publish_runtime_error(source="agent_restart", message=error, session_id=session.session_id)
+        await client.send_message(session, f"❌ {error}")
+        await _emit_restart_failed(session, reason=error, phase=RestartFailurePhase.INPUT_DISCARD_FAILED)
+        return False, error
 
     restart_mode = session.thinking_mode if session.thinking_mode else "slow"
     launch = await resolve_launch_model(
