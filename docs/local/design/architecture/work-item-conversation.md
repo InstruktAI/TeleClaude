@@ -24,7 +24,7 @@ What a reader sees is owned by
 | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | What a completed turn is, what it contains, when it completed                                                          | `agent_runtime`                    | Completed turns read (`local/projects/teleclaude/spec/feature/agent_runtime/session-transcript-retrieval`)       |
 | That a session stopped                                                                                                 | `agent_runtime`                    | The agent activity event the runtime emits for an agent stop (`local/projects/teleclaude/spec/event-vocabulary`) |
-| Which sessions belong to which item, where and when a turn goes, under which App, what is removed, the comment's shape | `workflow`                         | This design and the work record                                                                                  |
+| Which sessions belong to which item, where and when a turn goes, under which App, what is removed, the comment's shape | `workflow`                         | `local/projects/teleclaude/design/architecture/workflow-store` (Conversation) and the work record                |
 | Secrets the platform holds                                                                                             | `config`                           | The resolved values of every sensitive declaration                                                               |
 | Each GitHub request, its credential and its share of the rate budget                                                   | `workflow` (GitHub adapter module) | `local/projects/teleclaude/design/architecture/workflow-store` (GitHub request budget)                           |
 | Delivery of the stop event, its progress and recovery                                                                  | `event-catalog`                    | `local/projects/teleclaude/spec/feature/event-catalog/event-consumers`                                           |
@@ -65,93 +65,27 @@ whole fleet has one request budget and one stop.
 
 - One or more conversation comments per completed turn, on the destination
   the turn's completion time decides, in the shape the work record specifies,
-  posted by the master as the App chosen below.
+  posted by the master as the App the workflow store's adapter chooses.
 - The capturer's bookkeeping in the conversation store of the computer
   hosting the session: each captured turn, already protected and split into
   its comments, with its repository, destination, App and completion time, and
   which of its comments are on GitHub, and for each session the last turn
-  taken from the runtime. The master keeps no turn: it keeps only its budget
-  state, durably (workflow-store design, GitHub request budget).
+  taken from the runtime. The master keeps a handed-over turn only from the
+  moment it begins posting it until its last comment is on GitHub, and its
+  budget state, durably (workflow-store design, GitHub conversation store).
 
-**Conversation store.** The capturer's bookkeeping and the master's budget
-state live in the GitHub conversation store, which the workflow store's
-GitHub adapter owns, never in the working copy
+**Conversation store.** The capturer's bookkeeping and what the master
+keeps live in the GitHub conversation store; eligibility, the conversation
+start, the destination, the App, input parts and protection are decided by
+the workflow store's GitHub adapter
 (`local/projects/teleclaude/design/architecture/workflow-store`,
-Conversation).
-
-**Eligibility.** A session's turn belongs to an item when all hold: the
-session's project selects the GitHub store; its working item slug names an
-item of that project that is repository work; its role is one the workflow
-dispatches for an item: `prepare-orchestrator`, `work-orchestrator`,
-`intaker`, `architect`, `planner`, `prd-reviewer`, `architecture-reviewer`,
-`plan-reviewer`, `build-reviewer`, `builder`, `finalizer`, `diagnoser`,
-`drift-analyzer` and `deferrer`; and the turn completed at or after the
-project's conversation start. A session with no role, any other role, or no
-working item is never published: a commit review belongs to the project's
-ledger rather than one item, and the integrator and coordinator work across
-items.
-
-**Conversation start.** A computer that runs the publisher for a project
-whose ledger issue holds no conversation-start entry appends one, as the
-platform App, carrying that moment: a platform comment of its own kind,
-appended and never edited, opening with
-`[action:conversation-start at:<time>]`, with no ledger marker so stores that
-predate it read past it. The entry the ledger issue's comment order puts first
-is the project's conversation start, on every computer and after every
-rebuild. It is the lower bound of eligibility, so neither a restart nor a
-rebuilt working copy publishes a turn completed before the capability went
-live. A project without a ledger issue publishes nothing until the store opens
-one.
-
-**Destination.** A turn goes on the item's pull request when the item had an
-open pull request at the turn's completion: opened at or before it and not
-closed by then. Every other turn goes on the item's issue, including a turn
-completed during the build before a delayed reflection opened the pull
-request. The destination is decided once, when the turn is captured, from the
-opening and closing times GitHub reports for the pull request, which a rebuilt
-working copy finds again with the pull request itself, and it never changes: a
-turn posted late is not redirected because the pull request opened or closed
-in the meantime.
-
-**Identity.** A review role, resolved through its composite role, posts as
-the App `github.roles` maps for `reviewer`. Every other eligible role posts
-as the App mapped for that role when one is, and otherwise as the App mapped
-for `builder`, which is the author identity. The App the project's store
-declaration names never posts a turn.
-
-**Input parts.** Each authored input part is written under its author: a
-person's comment that comment routing delivered from GitHub
-(`local/projects/teleclaude/spec/feature/integration/github-comment-routing`)
-in full, quoted under that person's login with its link; a peer session's
-message under that session's id and role; platform and runtime content under
-the platform. A message a person gave the session through any other channel
-is not written; the turn states that the person spoke.
-
-**Protection.** The input requires personal data to be filtered with an
-established library before anything is posted, so protection is an
-established-library data-protection transform at the publication boundary,
-applied to every turn alike; it never decides whether a turn is published or
-anything about what it means. Before a turn is captured, the publisher:
-
-- masks every resolved value of a sensitive declaration, App private keys in
-  their encoded and decoded forms included;
-- replaces each credential detect-secrets recognizes, run locally with
-  verification off so no candidate leaves the computer, and without its
-  hexadecimal high-entropy plugin, because commit SHAs and digests fill this
-  conversation;
-- replaces each entity Presidio's analyzer recognizes, with its English small
-  model, for the person, email, phone, location, nationality, credit card,
-  IBAN, crypto wallet, IP address, MAC address and medical licence entities,
-  with that entity's label. Dates, URLs and UUIDs are not replaced: here they
-  are the platform's own timestamps, links and identifiers.
-
-A turn whose sensitive values cannot be resolved, or whose detection raises,
-is captured as a withheld turn and nothing of its content leaves the computer.
+Conversation). The capturer applies them when it captures a turn.
 
 ## Invariants
 
 - Every eligible turn appears on its destination exactly once, all of its
-  comments in order. On each destination the turns a computer posts appear in
+  comments consecutive, with no other comment of the conversation between
+  them. On each destination the turns a computer posts appear in
   completion order across every session of the item it hosts, and each turn's
   envelope carries its completion time, so a turn another computer posts late
   shows when it happened.
@@ -188,6 +122,7 @@ sequenceDiagram
     loop each destination, its captured turns by completion time
         P->>M: post this turn (relay)
         M->>M: admit under the fleet budget, or defer until a time
+        M->>M: keep the turn's comments not yet on GitHub
         M->>GH: create comment(s) as the turn's App
         M-->>P: posted, deferred until a time, or refused with a cause
         P->>WC: mark posted, or hold the destination
@@ -214,6 +149,13 @@ new computer's later turns, each showing its completion time
 (`local/projects/teleclaude/spec/feature/workflow/github-work-record`,
 Conversation).
 
+A turn is handed over whole, all its comments in one request. Before the
+master posts the first of them it keeps every one in its conversation store,
+and while it holds a turn begun and not finished on a destination it posts
+nothing else there: it finishes that turn from what it keeps, after a restart
+too, whether or not the capturing computer can still be reached, and answers
+any other turn for that destination deferred until then.
+
 ### Recovering position
 
 Bookkeeping lives in the capturing computer's conversation store. Before the
@@ -225,6 +167,13 @@ completed from its next missing part, from the protected parts it captured. A
 create whose reply was lost is found the same way before anything is posted
 again. After a lost conversation store, turns are captured again from the
 runtime from the first turn of each eligible session missing from GitHub.
+
+A master that finds a destination's last conversation comment to be part of a
+turn whose remaining comments it does not keep, because it became master or
+lost its conversation store, posts nothing else on that destination until the
+turn's capturing computer hands that turn over again and the master finishes
+it; the capturing computer keeps every turn until the master answers it
+posted.
 
 ## Failure modes
 
@@ -268,6 +217,10 @@ runtime from the first turn of each eligible session missing from GitHub.
 - **A new master, or a master that lost its budget record.** It posts
   nothing for an hour, the longest budget window; a longer pause stops it at
   the response to its first request.
+- **A turn left part-posted by a master that no longer keeps it, while its
+  capturing computer cannot be reached.** That destination holds, with
+  nothing else posted on it, until the capturing computer hands the turn over
+  again; every other destination proceeds.
 
 ## See Also
 
