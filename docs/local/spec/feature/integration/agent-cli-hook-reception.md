@@ -202,6 +202,15 @@ And the session is not reported complete while provider work remains active
   exits with a failure status.
 - The receiver swallows persistence errors during native-metadata
   writes with a warning log; the hook event itself is still enqueued.
+- The provider's hook timeout also covers the receiver's startup. Process
+  launch, interpreter selection and re-exec, module imports (including
+  child-process waits run by import-time library initialization), and logging
+  setup all run before the receiver logs its first record or reads its input.
+  None of them has a deadline of its own. When the provider's budget expires
+  during startup, the provider ends the receiver: the event is never enqueued,
+  the receiver leaves no record of it, and only the provider's own surface
+  reports the failure. For a lost `agent_stop`, the daemon never learns that
+  the turn ended. Contended hosts have produced such pre-ingress timeouts.
 
 ## See Also
 
