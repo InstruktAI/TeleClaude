@@ -26,6 +26,7 @@ from teleclaude.hooks.adapters.contracts import (
     HookResponseIntent,
     HookResponseKind,
     NativeHookSpec,
+    NormalizedHookField,
     SubagentDrop,
     SubagentDropReason,
 )
@@ -40,7 +41,6 @@ _DECISION_FIELD = "decision"
 _REASON_FIELD = "reason"
 _BLOCK_DECISION = "block"
 _UNSUPPORTED_DELIVERY_EVENT = "Codex event does not support control delivery"
-_TRANSCRIPT_PATH_FIELD = "transcript_path"
 _TOOL_USE_ID_FIELD = "tool_use_id"
 _TOOL_CALL_ID_FIELD = "tool_call_id"
 _POST_COMPACT_TRIGGER_FIELD = "trigger"
@@ -130,7 +130,7 @@ class CodexAdapter(HookAdapter):
     def subagent_disposition(self, raw_event_type: str, data: JsonDict) -> SubagentDrop | None:
         """Discard every hook whose transcript belongs to a spawned Codex subagent."""
         del raw_event_type
-        transcript_path = data.get(_TRANSCRIPT_PATH_FIELD)
+        transcript_path = data.get(NormalizedHookField.TRANSCRIPT_PATH)
         if isinstance(transcript_path, str) and is_codex_subagent_transcript(transcript_path):
             return SubagentDrop(SubagentDropReason.CODEX_SUBAGENT)
         return None

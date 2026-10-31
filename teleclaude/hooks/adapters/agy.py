@@ -26,6 +26,7 @@ from teleclaude.hooks.adapters.contracts import (
     HookResponseIntent,
     HookResponseKind,
     NativeHookSpec,
+    NormalizedHookField,
     SubagentCompletion,
     SubagentDisposition,
     SubagentDrop,
@@ -53,8 +54,6 @@ _INVALID_FULLY_IDLE = "Antigravity Stop requires a boolean fullyIdle"
 _UNSUPPORTED_DELIVERY_EVENT = "Antigravity event does not support control delivery"
 _CONTINUATION_EVENT_REQUIRED = "Antigravity continuation requires a Stop event"
 _CONVERSATION_ID_FIELD = "conversationId"
-_SESSION_ID_FIELD = "session_id"
-_TRANSCRIPT_PATH_FIELD = "transcript_path"
 _NATIVE_TRANSCRIPT_PATH_FIELD = "transcriptPath"
 
 
@@ -115,7 +114,7 @@ def _latest_transcript_role(transcript_path: str) -> str | None:
 
 def _hook_transcript_path(data: JsonDict) -> str | None:
     """Return the transcript path a hook carries, in either its native or its normalized field."""
-    for field in (_TRANSCRIPT_PATH_FIELD, _NATIVE_TRANSCRIPT_PATH_FIELD):
+    for field in (NormalizedHookField.TRANSCRIPT_PATH, _NATIVE_TRANSCRIPT_PATH_FIELD):
         value = data.get(field)
         if isinstance(value, str) and value:
             return value
@@ -168,14 +167,14 @@ class AgyAdapter(HookAdapter):
         content is sourced from the transcript by the projection layer.
         """
         normalized = dict(data)
-        if _SESSION_ID_FIELD not in normalized:
+        if NormalizedHookField.SESSION_ID not in normalized:
             conversation_id = normalized.get(_CONVERSATION_ID_FIELD)
             if isinstance(conversation_id, str) and conversation_id:
-                normalized[_SESSION_ID_FIELD] = conversation_id
-        if _TRANSCRIPT_PATH_FIELD not in normalized:
+                normalized[NormalizedHookField.SESSION_ID] = conversation_id
+        if NormalizedHookField.TRANSCRIPT_PATH not in normalized:
             transcript_path = normalized.get(_NATIVE_TRANSCRIPT_PATH_FIELD)
             if isinstance(transcript_path, str) and transcript_path:
-                normalized[_TRANSCRIPT_PATH_FIELD] = transcript_path
+                normalized[NormalizedHookField.TRANSCRIPT_PATH] = transcript_path
         tool_call = normalized.get(AgyToolCallField.TOOL_CALL)
         if isinstance(tool_call, dict):
             tool_name = tool_call.get(AgyToolCallField.NAME)
@@ -213,9 +212,9 @@ class AgyAdapter(HookAdapter):
         if raw_event_type == _STOP_EVENT and data.get(_FULLY_IDLE_FIELD) is True:
             payload = dict(data)
             payload.pop(_ERROR_FIELD, None)
-            payload[_SESSION_ID_FIELD] = origin.root_conversation_id
+            payload[NormalizedHookField.SESSION_ID] = origin.root_conversation_id
             payload[_CONVERSATION_ID_FIELD] = origin.root_conversation_id
-            payload[_TRANSCRIPT_PATH_FIELD] = origin.root_transcript_path
+            payload[NormalizedHookField.TRANSCRIPT_PATH] = origin.root_transcript_path
             payload[_NATIVE_TRANSCRIPT_PATH_FIELD] = origin.root_transcript_path
             return SubagentCompletion(payload)
         return SubagentDrop(SubagentDropReason.ANTIGRAVITY_SUBAGENT)

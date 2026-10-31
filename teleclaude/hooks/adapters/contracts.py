@@ -13,6 +13,13 @@ _EMPTY_REASON_ERROR = "Hook continuation reason must be non-empty"
 _EMPTY_EMISSION_ERROR = "Hook emission payload must be non-empty"
 
 
+class NormalizedHookField(StrEnum):
+    """Canonical payload fields every adapter normalizes native hook identity onto."""
+
+    SESSION_ID = "session_id"
+    TRANSCRIPT_PATH = "transcript_path"
+
+
 class HookPurpose(StrEnum):
     """TeleClaude-owned purposes for installing one native hook event."""
 

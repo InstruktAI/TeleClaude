@@ -68,6 +68,7 @@ from teleclaude.hooks.adapters.contracts import (
     HookEmission,
     HookResponseFormat,
     HookResponseKind,
+    NormalizedHookField,
     SubagentCompletion,
     SubagentDrop,
 )
@@ -1156,12 +1157,12 @@ def _emit_success_response_if_supported(
 
 def _extract_native_hook_fields(data: JsonDict) -> tuple[str | None, str | None]:
     raw_native_session_id: str | None = None
-    raw_id = data.get("session_id")
+    raw_id = data.get(NormalizedHookField.SESSION_ID)
     if isinstance(raw_id, str):
         raw_native_session_id = raw_id
 
     raw_native_log_file: str | None = None
-    raw_log = data.get("transcript_path")
+    raw_log = data.get(NormalizedHookField.TRANSCRIPT_PATH)
     if isinstance(raw_log, str):
         raw_native_log_file = raw_log
     return raw_native_session_id, raw_native_log_file
