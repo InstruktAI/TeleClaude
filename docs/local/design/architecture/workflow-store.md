@@ -239,31 +239,6 @@ working copy and the repository.
   push and publishes every version the repository lacks
   (`local/projects/teleclaude/adr/0126-non-repository-work-stays-in-the-github-store-working-copy`).
 
-<!-- planned-change:github-native-artifacts -->
-
-- **Repository layout.** Each repository work item is one issue the platform
-  App created. The item's `WorkItemId` and `StoreAddress` are those of its
-  working-copy row, exactly as on the local backend, so every port result
-  names items in one vocabulary; the issue is reached through the adapter's
-  own bookkeeping and never through a port identity. The item's **record** is
-  one platform-authored comment on that issue, edited in place: the item's
-  row facts, dependencies, workflow state, a revision counter and, for each
-  artifact, a pointer to its current content. Artifact versions are
-  platform-authored content comments appended to the issue and never edited
-  in content, so every version stays readable; content larger than one
-  comment is split across consecutive parts, the version's history link sits
-  hidden in its last part, and workflow state that does not fit in the record
-  is stored the same way. A history link in a comment of its own, as earlier
-  versions carry it, is read the same way. Content digests are computed from
-  the stored content exactly as the local implementation computes them. One
-  platform-created **ledger** issue per repository holds the project-level
-  records, commit reviews and documentation transfers, as appended entries.
-  Every platform comment opens with the envelope line the work record
-  specifies; the machine data follows it hidden, and every reader accepts a
-  comment with or without the envelope.
-
-<!-- change:github-native-artifacts -->
-
 - **Repository layout.** Each repository work item is one issue the platform
   App created. The item's `WorkItemId` and `StoreAddress` are those of its
   working-copy row, exactly as on the local backend, so every port result
@@ -293,8 +268,6 @@ working copy and the repository.
   accepts a comment with or without the envelope. No reader takes artifact
   content from a comment.
 
-<!-- /planned-change:github-native-artifacts -->
-
 <!-- planned-change:github-item-acts -->
 
 - **Reflections.** The issue's title, body, open or closed state, labels,
@@ -310,26 +283,6 @@ working copy and the repository.
   change to the work-control handler.
 
 <!-- /planned-change:github-item-acts -->
-
-<!-- planned-change:github-native-artifacts -->
-
-- **Write path.** Every transaction on the working copy records which items
-  and project-level records it changes. Before the local commit completes,
-  the adapter writes those changes to GitHub, and exactly one GitHub write is
-  the transaction's **commit point**: what GitHub holds after a refused
-  operation is what it held before. New content comments are appended first;
-  they are unreferenced until a record points at them.
-  - A transaction that changes one item and no project-level record commits
-    by editing that item's record to its next revision.
-  - Any other transaction first writes each changed record with its next
-    revision held as **pending** under the transaction's identity, beside the
-    record's committed revision, then commits by appending one **commit
-    entry** to the ledger that names the transaction, lists the items and
-    revisions it commits, and carries its project-level records. A pending revision whose transaction has no commit
-    entry is not part of the record, and the next write of that record
-    replaces it.
-
-<!-- change:github-native-artifacts -->
 
 - **Write path.** Every transaction on the working copy records which items
   and project-level records it changes. Before the local commit completes,
@@ -348,8 +301,6 @@ working copy and the repository.
     revisions it commits, and carries its project-level records. A pending revision whose transaction has no commit
     entry is not part of the record, and the next write of that record
     replaces it.
-
-<!-- /planned-change:github-native-artifacts -->
 
 A GitHub write before the commit point that fails aborts the local commit
 and surfaces as the operation's failure. The reflections are written after
@@ -470,8 +421,6 @@ master admits each conversation request before sending it:
   unverifiable item's owed reflection stays owed for refresh to settle once
   the item can be read again; it does not hold back the repair's completion.
 
-<!-- planned:github-native-artifacts -->
-
 - **Artifact republication.** A repository last brought to a projection from
   before native artifacts holds records that point at content comments. The
   projection repair on the computer that works the project republishes, for
@@ -514,21 +463,6 @@ master admits each conversation request before sending it:
   lists an issue's comments only for an issue whose record comment the working
   copy does not hold, or whose held comment GitHub no longer serves.
 
-<!-- /planned:github-native-artifacts -->
-
-<!-- planned-change:github-native-artifacts -->
-
-- **Trust.** A comment is read as record, content or ledger only when the
-  platform App's bot authored it, and only in the last version that bot
-  wrote. When its last editor is someone else, that version is recovered from
-  the comment's edit history, and refresh restores it on GitHub. The restored
-  version is never older than the record's latest committed revision. A comment with no recoverable bot
-  version is **unverifiable**: refresh leaves the working copy as it is, and
-  every write to that item refuses with that cause. A label, title, body,
-  comment or edit by anyone else is never read as state.
-
-<!-- change:github-native-artifacts -->
-
 - **Trust.** A comment is read as record or ledger only when the platform
   App's bot authored it, and only in the last version that bot wrote. When its
   last editor is someone else, that version is recovered from the comment's
@@ -545,8 +479,6 @@ master admits each conversation request before sending it:
   working copy as it is, and every write to that item refuses with that cause.
   A label, title, body, comment, artifact or edit by anyone else is never read
   as state.
-
-<!-- /planned-change:github-native-artifacts -->
 
 - **Selected-store helpers.** Presence, validation reads and integrity
   checks answer for the working copy. Transfer and database location refuse
@@ -618,16 +550,6 @@ master admits each conversation request before sending it:
   address. A consumer that carries the pair relies on either value naming the
   item the other names, without decoding the address.
 
-<!-- planned-change:github-native-artifacts -->
-
-- On a GitHub-backed project, no change to repository work reaches the
-  working copy's commit without first reaching GitHub, so the repository
-  holds every committed change to it and a lost working copy loses none of
-  it. Every write channel of the working copy, including raw connections,
-  commits through the push.
-
-<!-- change:github-native-artifacts -->
-
 - On a GitHub-backed project, no change to repository work reaches the
   working copy's commit without first reaching GitHub, so the repository
   holds every committed change to it. A lost working copy loses none of the
@@ -636,8 +558,6 @@ master admits each conversation request before sending it:
   version is recoverable only from the working copy that wrote it. Every
   write channel of the working copy, including raw connections, commits
   through the push.
-
-<!-- /planned-change:github-native-artifacts -->
 
 - Processes on one computer stay serialized by the working copy's
   transactions, exactly as on the local backend. A write that finds the
@@ -664,13 +584,6 @@ master admits each conversation request before sending it:
   request is written from a thread no write depends on, within the admission
   budget.
 
-<!-- planned-change:github-native-artifacts -->
-
-- The working copy's reads never reach GitHub; only writes, rebuild and
-  refresh do.
-
-<!-- change:github-native-artifacts -->
-
 - The working copy's reads never reach GitHub; only writes, rebuild, refresh
   and one exception do: reading an artifact version, or a diff between two,
   that a rebuilt working copy lacks reads that artifact's history from GitHub
@@ -678,8 +591,6 @@ master admits each conversation request before sending it:
   thread's request serialization like any other request; the versions it
   returns are then kept by a working-copy write that, like rebuild, pushes
   nothing, under the store's admission budget.
-
-<!-- /planned-change:github-native-artifacts -->
 
 - A project has one board: only the computer holding the board issue's first
   board claim creates it, and every computer uses the board its entries
@@ -702,21 +613,6 @@ master admits each conversation request before sending it:
    no-bootstrap or daemon-independent boundaries.
 
 ### Store activation
-
-<!-- planned-change:github-native-artifacts -->
-
-A project activates the GitHub store by declaring `todos.store: github`
-together with its repository and platform App
-(`local/projects/teleclaude/spec/teleclaude-config`), with that App installed
-on the repository. The first store resolution on a computer rebuilds the
-working copy from the repository; an empty repository yields an empty store.
-Moving an existing local store's items to GitHub is not part of activation.
-The GitHub store switch
-(`local/projects/teleclaude/spec/feature/workflow/github-store-switch`) moves
-them by restoring each item, with every artifact version, into the working copy
-as an ordinary change, so the write path below publishes it.
-
-<!-- change:github-native-artifacts -->
 
 A project activates the GitHub store by declaring `todos.store: github`
 together with its repository and platform App
@@ -742,32 +638,6 @@ The GitHub store switch
 them by restoring each item, with every artifact version, into the working copy
 as an ordinary change, so the write path below publishes it.
 
-<!-- /planned-change:github-native-artifacts -->
-
-<!-- planned-change:github-native-artifacts -->
-
-```mermaid
-sequenceDiagram
-    participant C as Consumer
-    participant W as Working copy (local implementation)
-    participant G as GitHub adapter
-    participant R as Repository
-    C->>W: port operation
-    W->>W: apply change in transaction
-    W->>G: commit requested (changed items)
-    G->>R: read record revision
-    G->>R: append content, edit record, set reflections
-    alt all GitHub writes succeed
-        G-->>W: commit proceeds
-        W-->>C: result
-    else a write before the commit point fails or revision is newer
-        G-->>W: abort
-        W-->>C: refusal
-    end
-```
-
-<!-- change:github-native-artifacts -->
-
 ```mermaid
 sequenceDiagram
     participant C as Consumer
@@ -787,8 +657,6 @@ sequenceDiagram
         W-->>C: refusal
     end
 ```
-
-<!-- /planned-change:github-native-artifacts -->
 
 ## Failure modes
 
@@ -840,14 +708,6 @@ sequenceDiagram
   inside that interval can lose one write. Within one computer this cannot
   occur.
 
-<!-- planned-change:github-native-artifacts -->
-
-- A content comment or a newly opened issue whose transaction then aborts
-  stays on GitHub unreferenced. Rebuild ignores it because no record points at
-  it; an issue without a platform record is not an item.
-
-<!-- change:github-native-artifacts -->
-
 - A newly opened issue whose transaction then aborts stays on GitHub
   unreferenced; rebuild ignores it, because an issue without a platform record
   is not an item. An artifact version whose transaction then aborts stays on
@@ -862,8 +722,6 @@ sequenceDiagram
   names. The unnamed one is never read, and people see both until someone
   removes it.
 
-<!-- /planned-change:github-native-artifacts -->
-
 - A crash after the GitHub write and before the local commit leaves the
   working copy behind the repository until refresh applies the newer
   revision; the repository is never behind.
@@ -872,15 +730,6 @@ sequenceDiagram
   stay on GitHub, closed; rebuild skips purged records.
 - Rebuild or refresh that cannot read the repository refuses store resolution
   for a missing working copy and leaves an existing one as it is.
-
-<!-- planned-change:github-native-artifacts -->
-
-- A comment that someone else edited, and whose edit history no longer holds
-  the bot's last version, makes its item unverifiable. Writes to the item
-  refuse, and rebuild refuses store resolution naming the item. No working
-  copy is ever published in its place.
-
-<!-- change:github-native-artifacts -->
 
 - A comment that someone else edited, and whose edit history no longer holds
   the bot's last version, makes its item unverifiable. Writes to the item
@@ -922,8 +771,6 @@ sequenceDiagram
   the requested items ahead of it, the item in progress, and any throttle or
   other refusal that ends a pass. A write made on a computer that does not run
   the repair marks nothing, and its item waits for the repair's order there.
-
-<!-- /planned-change:github-native-artifacts -->
 
 - A write holds the working copy's single writer from its first change until
   its local commit, across the GitHub round trips the write path places before
@@ -992,22 +839,10 @@ sequenceDiagram
 - A person without a declared GitHub account is not assigned; the question
   comment is still posted.
 
-<!-- planned-change:github-native-artifacts -->
-
-- A computer whose store predates the comment envelope reads an enveloped
-  content comment as no content, so the items holding one become
-  unverifiable there. The current store reads both forms; every computer that
-  serves a GitHub-backed project runs it before that project selects the
-  store.
-
-<!-- change:github-native-artifacts -->
-
 - A computer whose store predates native artifacts finds no content for a
   record that names artifacts, so every republished item is unverifiable
   there; every computer that serves a GitHub-backed project runs the current
   store before its repository is republished.
-
-<!-- /planned-change:github-native-artifacts -->
 
 ## See Also
 
@@ -1015,12 +850,8 @@ sequenceDiagram
 
 - docs/local/adr/0126-non-repository-work-stays-in-the-github-store-working-copy.md
 
-<!-- planned:github-native-artifacts -->
-
 - docs/local/adr/0146-github-store-keeps-artifact-versions-as-native-issue-artifacts.md
 - docs/third-party/github-api/issue-artifacts.md — the issue-artifacts API, its version window and the events it does not emit.
-
-<!-- /planned:github-native-artifacts -->
 
 - https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api
 

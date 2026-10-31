@@ -32,17 +32,6 @@ How the store maps onto the repository is owned by
 
 ## Canonical fields
 
-<!-- planned-change:github-native-artifacts -->
-
-- **Selection:** a project selects the store, names its repository and names
-  the platform App that writes the record in its declaration
-  (`local/projects/teleclaude/spec/teleclaude-config`). The App must be
-  installed on the repository with issue write access; until it is, every
-  workflow operation on the project refuses with that cause and nothing falls
-  back to a local store.
-
-<!-- change:github-native-artifacts -->
-
 - **Selection:** a project selects the store, names its repository and names
   the platform App that writes the record in its declaration
   (`local/projects/teleclaude/spec/teleclaude-config`). The App must be
@@ -51,8 +40,6 @@ How the store maps onto the repository is owned by
   organizations it enrolls; until both hold, every workflow operation on the
   project refuses with that cause and nothing falls back to a local store or to
   comments.
-
-<!-- /planned-change:github-native-artifacts -->
 
 - **Repository work only:** features, changes and bugs, and the group holders
   above them, are repository work. A task, and an item on the creative track,
@@ -174,17 +161,6 @@ How the store maps onto the repository is owned by
 
 <!-- /planned-change:github-item-acts -->
 
-<!-- planned-change:github-native-artifacts -->
-
-- **Artifact versions:** every version of every artifact (input, plan,
-  findings, review reports, log and the rest) is a platform comment opening
-  with `[action:artifact name:<artifact> version:<n>]`, where `<n>` counts that
-  artifact's versions on the item, followed by its content. Versions are
-  appended in order and their content is never rewritten. A version too large
-  for one comment continues in the next.
-
-<!-- change:github-native-artifacts -->
-
 - **Artifacts:** each artifact of an item (input, plan, findings, review
   reports, log and the rest) is one GitHub issue artifact on the item's issue,
   under the artifact's name, created by the platform App. Every version the
@@ -197,8 +173,6 @@ How the store maps onto the repository is owned by
   failed can remain beside it under the same name; it is never part of the
   record. Workflow state too large for the record is kept the
   same way, as the item's `workflow-state` artifact. The platform writes no artifact content into a comment and reads none from one; content comments left from before native artifacts are no part of the record. A version someone else saves stays the artifact's current version on GitHub until the platform next saves that artifact, and is never part of the record; an artifact someone else adds is left as it is and is never part of the record.
-
-<!-- /planned-change:github-native-artifacts -->
 
 - **Project records:** commit reviews and documentation transfers, which
   belong to the project rather than one item, are appended to one
@@ -388,8 +362,6 @@ Scenario: A turn that cannot be cleaned is withheld
   follow a change within the store's next refresh when the write that reflects
   them fails.
 
-<!-- planned:github-native-artifacts -->
-
 - The record depends on GitHub's issue-artifacts preview. If GitHub changes or
   withdraws it, workflow writes on the project refuse, and the artifacts on
   GitHub may stop being readable.
@@ -410,8 +382,6 @@ Scenario: A turn that cannot be cleaned is withheld
   the project, such a command puts the item among those republished first;
   how soon it is reached depends on how many others are waiting there and on
   GitHub's limits.
-
-<!-- /planned:github-native-artifacts -->
 
 <!-- planned:github-turn-mirror -->
 
