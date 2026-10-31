@@ -65,6 +65,20 @@ progress when it runs again, for as long as the stream retains those events. A
 consumer that runs for the first time starts with the events emitted from then
 on; it does not replay the stream's history.
 
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+A cluster event emitted while its computer cannot reach the cluster Redis
+(`local/projects/teleclaude/design/architecture/event-delivery`, Scopes and
+their Redis) is accepted and held on that computer, and its emission does not
+fail. Once the cluster Redis answers, the held events reach the stream in the
+order the computer emitted them, before any cluster event it emits afterwards,
+and a retained consumer on another computer handles each from its own progress.
+A held event survives a restart of the daemon and of the computer's own Redis,
+so an event emitted during the outage arrives late and is not lost. A computer
+whose local and cluster events share one Redis holds nothing.
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 <!-- planned-change:event-driven-lifecycle-runner -->
 
 The platform's own reactions — waking the lifecycle runner, spawning the
