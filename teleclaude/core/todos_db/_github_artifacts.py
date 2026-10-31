@@ -160,7 +160,8 @@ class _Sql(StrEnum):
         "INSERT OR IGNORE INTO github_republication_pending(item_id, requested, local_content) VALUES (:item_id, 0, 0)"
     )
     ENTRY_LINKED = (
-        "SELECT version_id FROM github_artifact_entry WHERE item_id = :item_id AND name = :name AND ordinal = :ordinal"
+        "SELECT version_id FROM github_artifact_entry WHERE item_id = :item_id AND name = :name AND ordinal = :ordinal "
+        "AND digest = :digest AND created_at IS :created_at"
     )
     ORDER = (
         "SELECT p.item_id, p.requested, i.issue_number, s.state FROM github_republication_pending AS p "
@@ -450,11 +451,18 @@ def keep_hydrated_version(session: Session, item_id: str, entry: EntryRow, conte
     """Keep a named version read back from GitHub as a local row, without making the item look changed.
 
     The entry is read again under the writer: a concurrent reader may have kept it already, or the artifact's removal
-    may have dropped it, and a row kept for either would be an unlinked copy of history that the next write would
+    may have dropped or replaced it, and a row kept for either would be an unlinked copy of history that the next write would
     save as a new version.
     """
     held = session.execute(
-        text(_Sql.ENTRY_LINKED), {_Field.ITEM_ID: item_id, _Field.NAME: entry.name, _Field.ORDINAL: entry.ordinal}
+        text(_Sql.ENTRY_LINKED),
+        {
+            _Field.ITEM_ID: item_id,
+            _Field.NAME: entry.name,
+            _Field.ORDINAL: entry.ordinal,
+            _Field.DIGEST: entry.digest,
+            _Field.CREATED_AT: entry.created_at,
+        },
     ).first()
     if held is None or held[0] is not None:
         return

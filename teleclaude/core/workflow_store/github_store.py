@@ -33,6 +33,7 @@ from teleclaude.core.todos_db._github_artifacts import (
     keep_hydrated_version,
     local_republication_pending,
     read_republication_wait,
+    republication_pending,
     save_issue_artifacts_fact,
 )
 from teleclaude.core.todos_db._github_board import board_setup, mark_all_board_items_owed_at, owed_board_items
@@ -219,6 +220,11 @@ class GitHubWorkflowStore(TodosDb):
     async def rebuild(self) -> None:
         """Populate a newly created working copy from the repository before serving it."""
         await self._sync.rebuild()
+
+    async def awaiting_republication(self, slug: str) -> bool:
+        """Whether the item's record still predates native artifacts, so its writes are refused until it is republished."""
+        async with self._session() as session:
+            return await session.run_sync(_slug_awaits_republication, slug)
 
     async def refresh_working_copy(self, *, republish: bool = False) -> int:
         """Adopt committed changes made by another computer and repair owed reflections.
@@ -723,6 +729,17 @@ def resolve_github_store_selection(
     if assignment is None:
         raise GitHubStoreSelectionRefused(_UNKNOWN_APP)
     return identity.project_path, identity, assignment
+
+
+async def refuse_if_awaiting_republication(store: WorkflowStore, slug: str) -> None:
+    """Refuse a write to an item awaiting republication with the retryable cause, where its state is unavailable."""
+    if isinstance(store, GitHubWorkflowStore) and await store.awaiting_republication(slug):
+        raise GitHubIORefused(GitHubIOFailure.AWAITING_REPUBLICATION)
+
+
+def _slug_awaits_republication(session: SyncSession, slug: str) -> bool:
+    item_id = session.execute(text(_ITEM_ID_BY_SLUG), {_SLUG: slug}).scalar_one_or_none()
+    return item_id is not None and republication_pending(session, str(item_id))
 
 
 def _probe_target(session: SyncSession) -> tuple[ArtifactFact | None, int | None]:

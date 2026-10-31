@@ -86,6 +86,7 @@ from teleclaude.core.todos_db._exceptions import (
     OperationFailure,
 )
 from teleclaude.core.todos_db._todo_soft_delete import ReactivateRefused
+from teleclaude.core.workflow_store.github_store import refuse_if_awaiting_republication
 from teleclaude.core.workflow_store.store import get_workflow_store
 from teleclaude.slug import validate_slug
 from teleclaude.types.creation_record import EntryPoint
@@ -472,6 +473,7 @@ def _validate_slug_for_create(slug: str, *, field_name: str) -> None:
 async def _todo_build_started(todos_db: WorkflowStore, slug: str) -> bool:
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
+        await refuse_if_awaiting_republication(todos_db, slug)
         raise HTTPException(status_code=404, detail=SLUG_NOT_FOUND_DETAIL.format(slug=slug))
     writer = StateWriter(raw_state)
     phase = writer.state.lifecycle_phase

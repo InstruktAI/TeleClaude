@@ -21,6 +21,7 @@ from teleclaude.core.todos_db._github_artifacts import (
     mark_pending_item,
     read_republication_wait,
     republication_order,
+    republication_pending,
     republication_progress,
     save_republication_progress,
     save_republication_wait,
@@ -111,7 +112,8 @@ class GitHubRepublication:
             else:
                 artifact = await self.io.async_update_artifact(issue_number, number, content)
             numbers[name] = artifact.number
-            await self._transaction(_record_save, item_id, name, version_id, digest, artifact.number)
+            if not await self._transaction(_record_save, item_id, name, version_id, digest, artifact.number):
+                return
         await self._finalize(item_id)
         logger.debug("github_store_item_republished", item_id=item_id, issue_number=issue_number)
 
@@ -141,11 +143,11 @@ class GitHubRepublication:
             "github_store_republication_throttled", not_before=wait.not_before.isoformat() if wait.not_before else None
         )
 
-    async def _transaction(self, operation: Callable[..., None], *arguments: object) -> None:
+    async def _transaction[Result](self, operation: Callable[..., Result], *arguments: object) -> Result:
         async with self.store._session() as session:
             async with session.begin():
                 await session.run_sync(acquire_repository_writer)
-                await session.run_sync(operation, *arguments)
+                return await session.run_sync(operation, *arguments)
 
 
 def _read_item(
@@ -157,7 +159,13 @@ def _read_item(
     return snapshot, number if isinstance(number, int) else None, republication_progress(session, item_id)
 
 
-def _record_save(session: Session, item_id: str, name: str, version_id: int, digest: str, artifact_number: int) -> None:
-    """Record an acknowledged save and end any pause: a save went through."""
+def _record_save(session: Session, item_id: str, name: str, version_id: int, digest: str, artifact_number: int) -> bool:
+    """Record an acknowledged save and end any pause: a save went through.
+
+    An item no longer pending was retired meanwhile, so the save is no progress and nothing is recorded.
+    """
+    if not republication_pending(session, item_id):
+        return False
     save_republication_progress(session, item_id, name, version_id, digest, artifact_number)
     save_republication_wait(session, RepublicationWait(None, 0))
+    return True
