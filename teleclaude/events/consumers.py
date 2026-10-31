@@ -231,8 +231,9 @@ def _answers_all(clients: tuple[Any, ...], answering: Collection[object] | None)
 class ConsumerRuntime:
     """Compose independent retained and live readers on one computer, each on the Redis of a scope it reads.
 
-    A reader waits for the Redis it reads: its position is taken and its run starts only while that Redis answers,
-    and a retained reader whose Redis stops answering waits for it and resumes from its group.
+    A reader's position is taken, and its run first started, only while the Redis involved answers. Once running, a
+    retained reader whose Redis stops answering waits for it between runs and resumes from its group; a live feed
+    recovers its own source and does not consult the reachability owner.
     """
 
     def __init__(
