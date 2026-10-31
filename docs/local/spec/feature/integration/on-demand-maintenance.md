@@ -264,13 +264,7 @@ Scenario: Refuse a run from an ineligible checkout
 
 #### UC-ODM3: A downstream project converges its own plumbing
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
 #### UC-ODM4: A run in the platform's checkout replaces the daemon
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 #### UC-ODM5: Nothing owed adds nothing
 
