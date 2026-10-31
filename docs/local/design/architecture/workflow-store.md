@@ -812,6 +812,21 @@ sequenceDiagram
   deleted; a pull request where an issue is required; and an unavailable or
   rate-limited provider each refuse distinctly. A refusal carries no provider
   response text and no credential.
+- A local CLI todo read that meets a GitHub identity refusal, a store
+  selection refusal or a GitHub I/O refusal ends with one `Error:` line on
+  stderr and a non-zero exit, never a traceback
+  (`general/principle/trust-and-guardrails`). The line names the cause and its
+  door: an unregistered project names the project folder and the projects
+  registry that was read, and points to `telec config project adopt` from that
+  folder; an undeclared repository names the project declaration whose
+  `todos.repository` to declare; a missing or unknown platform App names the
+  project declaration whose `todos.app` to fix; a refused App credential, at
+  identity read or at GitHub I/O, names that declaration and points to the
+  App's profile in the global configuration, the environment variable holding
+  its private key, and its installation on the repository; a rate limit, an
+  unavailable provider or any other GitHub I/O refusal says the GitHub store
+  could not be reached and points to a retry or `telec app status`; any other
+  identity refusal names its reason.
 
 - A GitHub write before the commit point that fails, is refused by a rate
   limit, or meets a newer record revision aborts the local commit and refuses
