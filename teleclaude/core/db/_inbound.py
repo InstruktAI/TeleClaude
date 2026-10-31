@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import delete, or_, update
+from sqlalchemy import and_, delete, not_, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -710,12 +710,29 @@ class DbInboundMixin:
             return list(result.all())
 
     async def cleanup_inbound(self, older_than_iso: str) -> int:
-        """Delete terminal inbound rows after their own retention interval."""
+        """Delete terminal inbound rows after their own retention interval.
+
+        A delivered row that is neither bound nor terminally dispositioned is kept while its session is retained
+        (open, or closed within the runtime retention window ending at ``older_than_iso``), whatever its source
+        class. It leaves with its session's retention, or earlier once it is bound or dispositioned.
+        """
+        cutoff = parse_iso_datetime(older_than_iso)
+        if cutoff is None:
+            raise ValueError(f"cleanup_inbound requires an ISO datetime cutoff, got {older_than_iso!r}")
+        retained_session_ids = await self._retained_session_ids(closed_since=cutoff)
+        bound_inbound_ids = select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id)
+        awaiting_binding = and_(
+            db_models.InboundQueue.status == _DELIVERED_STATUS,
+            db_models.InboundQueue.binding_disposition.is_(None),  # type: ignore[union-attr]
+            db_models.InboundQueue.id.notin_(bound_inbound_ids),
+            db_models.InboundQueue.session_id.in_(retained_session_ids),
+        )
         stmt = (
             delete(db_models.InboundQueue)
-            .where(db_models.InboundQueue.status.in_(["delivered", "expired"]))
+            .where(db_models.InboundQueue.status.in_([_DELIVERED_STATUS, "expired"]))
             .where(db_models.InboundQueue.hold_notice_pending.is_(False))
             .where(db_models.InboundQueue.created_at < older_than_iso)
+            .where(not_(awaiting_binding))
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
