@@ -713,8 +713,8 @@ class DbInboundMixin:
         """Delete terminal inbound rows after their own retention interval.
 
         A delivered row that is neither bound nor terminally dispositioned is kept while its session is retained
-        (open, or closed within the runtime retention window ending at ``older_than_iso``), whatever its source
-        class. It leaves with its session's retention, or earlier once it is bound or dispositioned.
+        (open, or closed at or after ``older_than_iso``, the lower edge of the runtime retention window), whatever
+        its source class. It leaves with its session's retention, or earlier once it is bound or dispositioned.
         """
         cutoff = parse_iso_datetime(older_than_iso)
         if cutoff is None:
