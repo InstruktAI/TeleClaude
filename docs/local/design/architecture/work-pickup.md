@@ -22,16 +22,16 @@ requests reads the project's whole current work and decides from that, as
 
 **Inputs — what requests a pass for a project:**
 
-| Source                    | Where it comes from                                                                                                                      | Computer                       |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| Local todo events         | todo created for pickup, updated, phase advanced, delivered; the router's existing triggers                                              | the computer that emitted them |
-| Claim released or cleared | the active computer's clear of a claim, whether its own release or one another computer relays, emits the todo-updated event             | the active computer            |
-| Removal and reactivation  | the workflow's removal and reactivation emit the todo-updated event                                                                      | the computer that made them    |
-| Session ended             | the existing session-ended events for a session in the project's checkout                                                                | the session's computer         |
-| Adopted changes           | a store refresh that adopts an item emits the todo-updated event for it (`local/projects/teleclaude/design/architecture/workflow-store`) | the computer that refreshed    |
-| Active computer named     | the active-computer-named event, published by the computer that names it and acted on by the named computer                              | the named computer             |
-| Project timer             | the project's next due instant: a scheduled task's next occurrence, or a failed start's retry                                            | the computer that armed it     |
-| Daemon start              | one pass for every project the daemon serves, once its event platform runs                                                               | every computer                 |
+| Source                    | Where it comes from                                                                                                                                                  | Computer                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Local todo events         | todo created for pickup, updated, phase advanced, delivered; the router's existing triggers                                                                          | the computer that emitted them |
+| Claim released or cleared | the active computer's clear of a claim, whether its own release or one another computer relays, emits the todo-updated event                                         | the active computer            |
+| Removal and reactivation  | the workflow's removal and reactivation emit the todo-updated event                                                                                                  | the computer that made them    |
+| Session ended             | the existing session-ended events for a session in the project's checkout                                                                                            | the session's computer         |
+| Adopted changes           | a store refresh that adopts an item emits the todo-updated event for it (`local/projects/teleclaude/design/architecture/workflow-store`)                             | the computer that refreshed    |
+| Active computer named     | the active-computer-named event, retained by the computer that names it before it writes the variable, and acted on by the named computer once the variable names it | the named computer             |
+| Project timer             | the project's next due instant: a scheduled task's next occurrence, or a retry after a failed start, an unanswered claim judgment or a failed pass                   | the computer that armed it     |
+| Daemon start              | one pass for every project the daemon serves, once its event platform runs                                                                                           | every computer                 |
 
 **Outputs:** the existing pass outcomes — orchestrator starts through driver
 admission (`local/projects/teleclaude/spec/feature/workflow/driver-admission`),
@@ -115,16 +115,22 @@ sequenceDiagram
     participant GH as GitHub
     participant Named as Named computer
 
+    Caller->>Named: active-computer-named event (cluster), retained first
     Caller->>GH: write the active-computer variable
-    Caller->>Caller: publish active-computer-named event (cluster), awaited
-    Caller-->>Caller: naming reported done only once published
-    Named->>Named: request pass for its checkout of the project
+    Named->>GH: read the variable on arrival
+    alt names this computer
+        Named->>Named: request pass for its checkout of the project
+    else not yet
+        Named->>GH: read again once the naming's write deadline has passed
+        Named->>Named: request pass when it names this computer
+    end
 ```
 
-The caller holds the obligation to tell the named computer: the naming is
-reported done only once the event is in the cluster stream, a failure after the
-variable write is reported as a failed naming, and naming again repeats both
-steps harmlessly.
+The notice is the durable record of the naming's intent and is retained before
+the variable changes: a naming whose notice cannot be retained writes nothing
+and is reported as failed. Once the notice is retained, the named computer
+needs nothing more from the caller. A caller interrupted before its write
+leaves a variable that never names the told computer, which then does nothing.
 
 ## Failure modes
 
@@ -141,8 +147,11 @@ steps harmlessly.
   judges it again within a minute, for as long as the computer stays silent;
   the claim stays held meanwhile
   (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
-- **The naming notice is not published** after the variable was written: the
-  naming is reported as failed, and naming again tells the named computer.
+- **The naming notice cannot be retained:** the variable is not written and
+  the naming is reported as failed.
+- **The naming is interrupted after its notice:** the named computer reads the
+  variable on arrival and once more when the write can no longer be under way,
+  and evaluates the project only when the variable names it.
 - **GitHub holds the project's requests back** after a rate limit. A
   delivery-triggered refresh waits for GitHub's stated time, because GitHub
   forbids requests before it; the delivered change is adopted when it passes
