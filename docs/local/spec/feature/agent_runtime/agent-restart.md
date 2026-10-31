@@ -97,6 +97,19 @@ Scenario Outline: Restart failure reaches the operator
 
 #### UC-AR12: Maintenance restoration wakes the resumed agent without foregrounding the continuation
 
+<!-- planned:restart-relaunch-fuses-shell-line -->
+
+#### UC-AR21: Restart relaunches cleanly over unsubmitted shell input
+
+```
+Given a person restarts an agent while text typed into its host shell has not been submitted
+When the restart succeeds
+Then the same session continues from its native conversation exactly as the restart launched it
+And the unsubmitted text never reaches the agent
+```
+
+<!-- /planned:restart-relaunch-fuses-shell-line -->
+
 ### Cross-context references
 
 - **identity** — clearance for agent restart is enforced at the boundary; the handler does not re-validate identity mid-flight. The `self` form resolves the caller's own session via the local identity record, which is the same source consulted for clearance.
