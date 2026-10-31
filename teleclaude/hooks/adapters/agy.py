@@ -10,7 +10,6 @@ from types import MappingProxyType
 
 from teleclaude.core.events import AgentHookEvents
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks.adapters.agy_conversation import read_subagent_origin
 from teleclaude.hooks.adapters.base import (
     HookAdapter,
     HookEventNormalization,
@@ -32,6 +31,7 @@ from teleclaude.hooks.adapters.contracts import (
     SubagentDrop,
     SubagentDropReason,
 )
+from teleclaude.hooks.agy_conversation import read_subagent_origin
 
 _INVOCATION_NUM_FIELD = "invocationNum"
 _STEP_IDX_FIELD = "stepIdx"
