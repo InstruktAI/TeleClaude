@@ -210,7 +210,8 @@ And the session is not reported complete while provider work remains active
   during startup, the provider ends the receiver: the event is never enqueued,
   the receiver leaves no record of it, and only the provider's own surface
   reports the failure. For a lost `agent_stop`, the daemon never learns that
-  the turn ended. Contended hosts have produced such pre-ingress timeouts.
+  the turn ended. Provider-recorded hook timeouts that left no receiver record
+  have occurred. Which startup step used up their budget is not established.
 
 ## See Also
 
