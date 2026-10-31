@@ -248,6 +248,7 @@ from teleclaude.events.envelope import EventHomeMarker, EventLevel, EventVisibil
 from teleclaude.events.envelope_facts import home_for_project_path as _workflow_event_home
 from teleclaude.events.processor import EventProcessor
 from teleclaude.events.producer import publish_event
+from teleclaude.events.redis_reachability import RedisReachability
 from teleclaude.events.references import ConfigurationRef, TodoRef
 from teleclaude.events.schemas.sdlc import (
     TodoDelivered,
@@ -541,6 +542,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.agent_status_watchdog_task: SupervisedTask | None = None
         self._event_db: EventDB | None = None
         self._event_redis_client: ScopedClients[Any] | None = None
+        self._event_reachability: RedisReachability | None = None
         self._fleet_capability_map_provider: Callable[[], FleetCapabilityMap] | None = None
         self.mirror_worker_task: SupervisedTask | None = None
         self._event_consumer_tasks: tuple[SupervisedTask, ...] = ()
