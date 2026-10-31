@@ -267,6 +267,6 @@ class AgyAdapter(HookAdapter):
             return json.dumps({})
         if raw_event_type in {_PRE_TOOL_USE_EVENT, _STOP_EVENT}:
             return json.dumps({_DECISION_FIELD: AgyDecision.ALLOW})
-        if raw_event_type == _POST_TOOL_USE_EVENT:
+        if raw_event_type in {_POST_TOOL_USE_EVENT, AgyHookEvent.POST_INVOCATION}:
             return json.dumps({})
         return None
