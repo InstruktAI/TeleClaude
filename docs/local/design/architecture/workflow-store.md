@@ -335,10 +335,23 @@ sessions working a repository work item on the pull request the item had open
 when each turn completed, otherwise on its issue, as the role Apps, sent by
 the fleet's master
 (`local/projects/teleclaude/design/architecture/work-item-conversation`).
-The conversation store of the computer hosting a session, a store of its own
-apart from the working copy, holds that session's captured turns, protected
-and split, until they are on GitHub, and never raw transcript content; the
-working copy, the record and the workflow state are unchanged.
+The record and the workflow state are unchanged.
+
+**GitHub conversation store.** Each computer keeps a store of its own in the
+daemon's store registry
+(`local/projects/teleclaude/design/architecture/database`), apart from the
+working copy (`sdlc/policy/state-storage`). It holds the turns the computer
+captured from the sessions it hosts, protected and split, never raw
+transcript content, with which of their comments are on GitHub, and for each
+session the last turn taken from the runtime; and the request budget state
+below. A captured turn leaves the store once its last comment is on GitHub. A
+session's last-taken turn leaves it once the session has been closed longer
+than the runtime retention window and none of its turns remains. An append
+time leaves it once older than the longest budget window, a pause once it has
+ended, and a notice once delivered or past its time. A lost
+store is recovered from GitHub and the runtime
+(`local/projects/teleclaude/design/architecture/work-item-conversation`,
+Recovering position).
 
 **GitHub request budget.** Every GitHub request the adapter module makes runs
 on its one I/O runtime. Record work, meaning the write path, reflections,
@@ -372,19 +385,19 @@ master admits each conversation request before sending it:
   the notice durably while the master cannot be reached, and delivers it once
   the relay answers, unless its time has passed by then. A turn handed over
   during the pause is answered deferred until its end.
-- **The budget survives a restart.** The master's request runtime records the
-  time of each conversation append it sends within the last hour, the end of
-  any pause and the length of the last unnamed pause, and reloads them before
-  it admits a conversation request after it starts. A computer other than the
-  master records the notice it has not yet delivered. Each computer keeps
-  these in one state file of the request runtime in the TeleClaude home,
-  written whole and replaced atomically, apart from every database
-  (`sdlc/policy/state-storage`, The medium follows the state's shape).
+- **The budget survives a restart.** The master records the time of each
+  conversation append it sends, the end of any pause and the length of the
+  last unnamed pause in its conversation store, and reads them before it
+  admits each conversation request. Every process on a computer that makes
+  GitHub requests — the daemon and the command-line and integration
+  processes — records a limit response it receives in that computer's
+  conversation store: on the master as a pause, elsewhere as a notice the
+  daemon delivers to the master.
 - **A master without a record waits out the window.** A computer that
   becomes the master holds none of its predecessor's record, and a master
-  whose state file is missing holds none of its own, so it admits no
-  conversation request until an hour after it became master or found the file
-  missing, the longest budget window; a pause still running after that
+  whose conversation store is lost holds none of its own, so it admits no
+  conversation request until an hour after it became master or opened a new
+  store, the longest budget window; a pause still running after that
   reaches it as the response to its first request.
 
 <!-- /planned:github-turn-mirror -->

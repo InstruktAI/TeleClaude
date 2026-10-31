@@ -73,17 +73,11 @@ whole fleet has one request budget and one stop.
   taken from the runtime. The master keeps no turn: it keeps only its budget
   state, durably (workflow-store design, GitHub request budget).
 
-**Conversation store.** The capturer's bookkeeping is external bookkeeping
-for comments on GitHub and the recorded intent of each post, kept in a daemon
-store of its own on the capturing computer
-(`local/projects/teleclaude/design/architecture/database`), never in the
-working copy, which is rebuilt from GitHub and whose writer record writes wait
-for (`sdlc/policy/state-storage`). Only the capturer writes it; the master's
-answers reach it through the capturer. A turn leaves it once its last comment
-is on GitHub; a session's last-taken turn leaves it once the session has been
-closed longer than the runtime retention window and none of its turns remains.
-Losing the store costs reading each destination's comments from GitHub and
-capturing the remaining turns again from the runtime (Recovering position).
+**Conversation store.** The capturer's bookkeeping and the master's budget
+state live in the GitHub conversation store, which the workflow store's
+GitHub adapter owns, never in the working copy
+(`local/projects/teleclaude/design/architecture/workflow-store`,
+Conversation).
 
 **Eligibility.** A session's turn belongs to an item when all hold: the
 session's project selects the GitHub store; its working item slug names an
@@ -272,8 +266,8 @@ runtime from the first turn of each eligible session missing from GitHub.
   answers; meanwhile the master learns of a limit shared with its own
   requests from the response to its next request.
 - **A new master, or a master that lost its budget record.** It posts
-  nothing for an hour, so no budget window it cannot see is still running; a
-  longer pause stops it at the response to its first request.
+  nothing for an hour, the longest budget window; a longer pause stops it at
+  the response to its first request.
 
 ## See Also
 
