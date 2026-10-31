@@ -47,7 +47,11 @@ async def list_projects() -> list[ProjectInfo]:
 
 
 def registered_projects_by_path() -> dict[str, ProjectInfo]:
-    """The registered projects as last loaded, keyed by project path, without reloading the registry."""
+    """The registered projects keyed by project path, from the catalog's cached entries.
+
+    The catalog loads its entries from configuration and the registry when its cache is empty, so this can
+    read those sources.
+    """
     return {str(entry.root): _project_info(entry) for entry in get_project_catalog_service().list_entries()}
 
 

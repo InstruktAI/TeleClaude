@@ -540,15 +540,19 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
 
             The preparation observation, the configuration migration reach and the degraded
             components ride only on the local API socket: the TCP webhook listener shares this
-            app and has a bound port in its server address. A degraded project's details are
-            shown to the callers whose reach admits the project.
+            app and has a bound port in its server address. A degraded project is shown only to
+            the callers whose reach admits the project.
             """
             server = request.scope.get("server")
             over_tcp = server is not None and server[1] is not None
             preparation = (
                 None if over_tcp else PreparationObservationDTO.from_observation(get_shutdown_drain().observation())
             )
-            degraded = None if over_tcp else degradations_within_reach(self._degradations.snapshot(), identity)
+            degraded = (
+                None
+                if over_tcp
+                else await asyncio.to_thread(degradations_within_reach, self._degradations.snapshot(), identity)
+            )
             return HealthDTO(
                 start_commit=self._start_commit,
                 preparation=preparation,
