@@ -136,11 +136,11 @@ Scenario: The peer cannot answer the request
   `all`, is among them. There is no "include local" toggle; an operator
   wanting the local results beside remote ones names the local computer too,
   or names `all`.
-- A search without `--computer` reads only this computer. The roster keeps a
-  computer it discovered listed online until this computer's daemon restarts,
-  even after that computer leaves the fleet, so a search of every computer
-  waits out the request's time limit for one that has left and reports it as
-  failed.
+- A search without `--computer` reads only this computer; searching every
+  computer is asked for with `all`.
+- A computer the roster still lists online after it has left the fleet is
+  searched under `all`: the search waits out the request's time limit for it
+  and reports it as failed.
 
 <!-- /planned-change:history-search-all-computers -->
 
