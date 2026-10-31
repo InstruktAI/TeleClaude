@@ -221,7 +221,9 @@ transcript with `telec history show <session_id>`, read the human turns as the
 entry audit does, and compare substance. A requirement
 present in the conversation and absent from the artifact is returned to the
 intent path as a single question, on the same terms as any other divergence
-above: noticing it is the task, not adjudicating it.
+above: noticing it is the task, not adjudicating it. When that transcript
+cannot be read, handle it as `sdlc/procedure/lifecycle/review` Step 0 states
+and judge the plan against the artifacts as they stand.
 
 ### 4. Plan-specific quality
 

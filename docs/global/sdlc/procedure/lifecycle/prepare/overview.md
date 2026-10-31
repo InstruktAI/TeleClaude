@@ -104,7 +104,9 @@ and carry the input repairs it identifies into Step 2.
    artifact's writers; read every writer that is not this session, including a
    writer the record does not name. A user entry outside any complete recognized
    platform envelope is a human's own turn (`general/policy/message-identity-headers`).
-   Record what was compared and what came of it.
+   Record what was compared and what came of it. A writer whose conversation
+   cannot be read is recorded and handled as `sdlc/procedure/lifecycle/review`
+   Step 0 states for a producing conversation; `input` stays the basis.
 3. Derive the work from that basis by kind — the outcome and constraints for
    `feature` and `change`; the reported concern, symptom, and
    expected-versus-observed behavior for `bug`, whose causal and scope claims
@@ -369,6 +371,8 @@ that the human owns its recovery.
 - **Creation record is absent or incomplete.** Derive from the input and prior
   artifacts; never solicit an attestation from the creator. Reading a named
   session's transcript under Step 0a recovers meaning and is not solicitation.
+- **A writer's transcript cannot be read.** Proceed under Step 0a item 2; the
+  audit does not wait for the transcript or stop for its absence.
 - **The input is too thin to derive from after the audit.** Stop before
   kind-specific derivation and surface the gap; do not manufacture product
   detail.
