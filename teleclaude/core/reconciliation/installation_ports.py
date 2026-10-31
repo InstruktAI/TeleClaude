@@ -67,6 +67,7 @@ _LOCAL_REDIS_PREPARE_FAILED_EVENT = "install_local_redis_preparation_failed"
 _MIGRATE_CERTAIN_FAILURES = frozenset({MigrationExitCode.FAILED, COMMAND_START_FAILURE_EXIT_CODE})
 _PUBLICATION_MODULE = "teleclaude.entrypoints.install_publication"
 _SCHEMA_MODULE = "teleclaude.core.reconciliation.config_schemas"
+_PLUMBING_MODULE = "teleclaude.project_setup.plumbing"
 _RELEASE_OPTION = "--release"
 _PUBLISH_TIMEOUT_SECONDS = 900.0
 # A release that ships the receiver's socket unit runs a receiver that adopts the socket its unit holds; an earlier
@@ -285,12 +286,13 @@ class LiveInstallPorts:
                 remove_release(self._layout, revision)
 
     def publish(self, revision: str) -> str | None:
-        """Publish the release's configuration schemas, and its documentation and agent artifacts where no platform checkout publishes them, through its own interpreter."""
+        """Publish the release's configuration schemas, and its documentation and agent artifacts where no platform checkout publishes them, then converge every registered root and the platform home to its templates, through its own interpreter."""
         release = self._layout.release_path(revision)
         python = str(release / _RELEASE_PYTHON)
         for arguments in (
             (_MODULE_OPTION, _PUBLICATION_MODULE, _RELEASE_OPTION, str(release)),
             (_MODULE_OPTION, _SCHEMA_MODULE),
+            (_MODULE_OPTION, _PLUMBING_MODULE),
         ):
             result = run_process_group_command(
                 [python, *arguments],

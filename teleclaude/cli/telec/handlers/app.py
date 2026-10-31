@@ -93,10 +93,11 @@ _STATUS_MIGRATED = "Migrations started since activation: {stores}"
 _STATUS_UNKNOWN_MIGRATED = "a start that could not be attributed to a store"
 _STATUS_INSTALLING = "Install window:    target {target}, migrations started: {stores}"
 _PUBLICATION_OWED = (
-    "The release is active, but publishing its documentation, agent artifacts and schemas did not complete: "
+    "The release is active, but publishing its documentation, agent artifacts and schemas, or converging "
+    "project plumbing, did not complete: "
     "{failure}\nRun `telec app install` again to replay it."
 )
-_STATUS_PUBLICATION = "Publication owed:  {revision}{failure}"
+_STATUS_PUBLICATION = "Post-install owed: {revision}{failure}"
 _STATUS_LAST_ACT = "Last act:          {act} {outcome} {revision} at {at}"
 _STATUS_REASON = "  reason: {reason}"
 _STATUS_OWED = "Assessment owed:  since {since}"

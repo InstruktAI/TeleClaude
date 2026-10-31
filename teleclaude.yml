@@ -53,13 +53,6 @@ jobs:
     enabled: ${TELECLAUDE_JOB_LOGBUGHUNTER_ENABLED}
 checkpoint:
   maintenance:
-    plumbing-convergence:
-      command:
-        - '{interpreter}'
-        - -m
-        - teleclaude.project_setup.plumbing
-      main_only: true
-      precedence: 15
     docs-layout-convergence:
       command:
         - '{interpreter}'
@@ -78,16 +71,10 @@ checkpoint:
   bindings:
     - scope:
         include:
-          - templates/quality/githooks/**
-      actions:
-        - plumbing-convergence
-    - scope:
-        include:
           - templates/help-desk-*/**
           - templates/home-person/**
           - templates/home-company/**
       actions:
-        - plumbing-convergence
         - sync
     - scope:
         include:

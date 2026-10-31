@@ -199,7 +199,7 @@ class InstallPorts(Protocol):
         ...
 
     def publish(self, revision: str) -> str | None:
-        """Publish the release's documentation, agent artifacts and schemas; the failure detail, or ``None``."""
+        """Publish the release's documentation, agent artifacts and schemas, then converge the fleet's plumbing to its templates; the failure detail, or ``None``."""
         ...
 
 
@@ -430,12 +430,12 @@ def _left_stopped(
 
 
 def _completed(layout: InstallationLayout, target: str, ports: InstallPorts) -> InstallResult:
-    """Record the completed act, move running terminal interfaces onto it, prune, and publish the installed release.
+    """Record the completed act, move running terminal interfaces onto it, prune, and publish and converge the installed release.
 
     Every running terminal interface is signalled to reload onto the new active release, and the prune keeps
     the active and previous releases plus every release a running terminal interface's record still names.
-    Publication follows the completed install and never changes which release is active: a failure is
-    recorded as owed and replayed by the next install of the active revision.
+    Publication and fleet plumbing convergence follow the completed install and never change which release is
+    active: a failure of either is recorded as owed and replayed by the next install of the active revision.
     """
     record = update_record(
         lambda current: current.with_last_act(InstallAct.INSTALL, ActOutcome.COMPLETED, target, None).publication_owed(
@@ -475,7 +475,7 @@ def _after_reload_held_revisions(ports: InstallPorts) -> frozenset[str] | None:
 
 
 def _publish(revision: str, ports: InstallPorts, layout: InstallationLayout) -> str | None:
-    """Publish ``revision`` and record what is still owed; the failure detail, or ``None`` when it published."""
+    """Publish and converge ``revision`` and record what is still owed; the failure detail, or ``None`` when both finished."""
     failure = ports.publish(revision)
     update_record(
         lambda record: record.published() if failure is None else record.publication_owed(revision, failure), layout
@@ -486,7 +486,7 @@ def _publish(revision: str, ports: InstallPorts, layout: InstallationLayout) -> 
 
 
 def _replay_publication(revision: str, ports: InstallPorts, layout: InstallationLayout) -> str | None:
-    """Replay the publication the active release still owes, when it owes one."""
+    """Replay the publication and convergence the active release still owes, when it owes them."""
     owed = read_record(layout).publication
     if owed is None or owed.revision != revision:
         return None
