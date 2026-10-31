@@ -97,7 +97,7 @@ def caller_role_at_own_person_scope(identity: CallerIdentity) -> str | None:
 
 def caller_for_role_resolution(identity: CallerIdentity) -> CliCaller:
     """Hydrate a carried person identity with its roster slug for scoped role lookup."""
-    caller = caller_from_carried_identity(identity)
+    caller = _caller_from_carried_identity(identity)
     if not isinstance(caller, PersonCliCaller):
         return caller
     principal = identity.principal or (human_principal_for_email(identity.email) if identity.email else None)
@@ -107,7 +107,7 @@ def caller_for_role_resolution(identity: CallerIdentity) -> CliCaller:
     return PersonCliCaller(email=caller.email, person_slug=resolved.person_slug, human_role=caller.human_role)
 
 
-def caller_from_carried_identity(identity: CallerIdentity) -> CliCaller:
+def _caller_from_carried_identity(identity: CallerIdentity) -> CliCaller:
     """Adapt carried identity to the shared caller type without re-resolving it."""
     principal = identity.principal
     if principal and principal.startswith("human:"):
@@ -263,7 +263,6 @@ async def resolve_caller_provenance(identity: CallerIdentity) -> CallerProvenanc
 
 __all__ = [
     "CallerIdentity",
-    "caller_from_carried_identity",
     "carried_caller",
     "carried_caller_of",
     "carried_caller_session_id",
