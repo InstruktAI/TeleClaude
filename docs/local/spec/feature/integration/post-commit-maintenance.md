@@ -42,23 +42,6 @@ contract governs only what happens when maintenance runs.
   tips. Changed-file resolution, command expansion, outcomes, and replay all use
   those immutable fields.
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-- **Owed set.** The main-only maintenance actions selected by the merged
-  registry's path bindings and canonical-main activation bindings. An
-  activation binding applies even when the commit changes no paths. The shared
-  matcher owns this selection under
-  `local/projects/teleclaude/design/architecture/checkpoint-system`. Actions run
-  in declared precedence waves, where a precedence orders an action after the
-  actions whose effects it needs and after nothing else; a failure does not
-  cancel later waves. An owed restart action is not a wave: it is the
-  stopped-daemon window the other owed actions run inside, except the actions
-  the registry declares to run while the daemon serves — Blueprint maintenance,
-  publication and configuration-schema publication — which run after the
-  window's verified start.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
 - **Owed set.** The main-only maintenance actions selected by the merged
   registry's path bindings and canonical-main activation bindings. An
   activation binding applies even when the commit changes no paths. The shared
@@ -69,8 +52,6 @@ contract governs only what happens when maintenance runs.
   cancel later waves. No owed action stops, starts or replaces the daemon: a
   commit changes nothing live, and the install act is the only path to the
   live platform (`local/projects/teleclaude/design/architecture/installation`).
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - **Recording outcome.** The activation boundary distinguishes an owed set
   durably recorded, an explicitly empty owed set, and a refused activation with
@@ -148,27 +129,6 @@ contract governs only what happens when maintenance runs.
   An interrupted attempt remains eligible for retry; each action converges
   safely when repeated after its effect preceded record removal.
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-- **Settlement announcement.** A commit activation of the canonical checkout
-  is settled once every action it owes has a terminal outcome: success, or a
-  failure that stays recorded; an activation that owes no action settles when
-  it is registered. A restart obligation whose window start verified counts as
-  succeeded, even while the window keeps it beside an action that failed inside
-  that window. Settling announces the activation's state as an
-  event of the `teleclaude.maintenance.activation` family in the checkout's
-  project, with the activated tip as its subject: `failed` when any owed
-  action failed terminally, naming each failed action with the command that
-  replays it, otherwise `succeeded`. A replay that completes the
-  failed actions settles the activation again and announces `succeeded` for the
-  same subject. Every settled activation's announcement stays held until it is
-  published, and holding a later one never drops an earlier one. An activation
-  that settles while no daemon serves is announced once one does. A repeated
-  announcement of one settlement carries the same event id, and settlements of
-  different projects never share one. Event activations are not announced.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
 - **Settlement announcement.** A commit activation of the canonical checkout
   is settled once every action it owes has a terminal outcome: success, or a
   failure that stays recorded; an activation that owes no action settles when
@@ -183,8 +143,6 @@ contract governs only what happens when maintenance runs.
   that settles while no daemon serves is announced once one does. A repeated
   announcement of one settlement carries the same event id, and settlements of
   different projects never share one. Event activations are not announced.
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - **One-shot drain.** Every hook that records owed work starts a contender. One OS-owned file lock
   admits a single active drain; contenders wait for that lock, process pending
@@ -220,124 +178,6 @@ contract governs only what happens when maintenance runs.
   An event activation records no integrator judgment: the maintenance an advance
   of canonical main owes is that advance's own activation.
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-- **Replacement owed.** In a root whose registry declares the restart action,
-  every activation whose changed paths select any maintenance action other than
-  one the registry declares to run while the daemon serves owes the restart
-  action, whatever its bindings name. An activation whose changed paths select
-  only such actions — publication among them — or nothing, a
-  documentation-only change among them, owes no restart and runs, together
-  with the actions every canonical-main activation owes, while the daemon keeps
-  serving. A root that declares no restart action has no window.
-
-- **Stopped-daemon window.** An activation whose owed set includes the
-  restart action replaces the daemon inside a stopped-daemon window, a
-  controlled restart under `local/projects/teleclaude/policy/daemon-availability`.
-  The window opens before any of the activation's owed actions that run inside
-  it. It first waits, admission still open, until the daemon holds no accepted work,
-  up to a bound the window owns; an integration whose commit owes the restart
-  is accepted work like any other, so its own window never closes admission
-  while it is still running. It then stops the daemon through `make stop`,
-  whose preparation settles the work accepted until then
-  (`local/projects/teleclaude/spec/feature/agent_runtime/daemon-lifecycle`).
-  A preparation that does not complete within its observation window is
-  reported, and the window keeps waiting and stopping again until the daemon
-  has stopped; no owed action runs while the daemon serves. With the daemon
-  stopped, every owed action that runs inside the window runs in its
-  precedence waves; installation inside the window leaves the tmux server running
-  (`local/projects/teleclaude/policy/agent-service-control`). The window
-  closes after the last of them: it starts the daemon through `make start` and
-  verifies, within a bound it owns, that the started daemon answers its health
-  read with admission open and reports the checkout's current tip as the commit
-  it started from. A start command that finishes with a failure is not
-  verified, however healthy the daemon. The restart action succeeds only on
-  that verification.
-
-- **Actions after the start.** The registry declares which actions run while
-  the daemon serves
-  (`local/projects/teleclaude/design/architecture/checkpoint-system`), and the
-  platform base declares Blueprint maintenance and publication so, and this
-  repository's overlay configuration-schema publication. Such an
-  action never runs inside a window and never holds the daemon stopped. When a
-  window covers its activation, it runs after that window's start has
-  verified, in its precedence waves, while the started daemon serves; when the
-  start does not verify, it stays recorded and a later drain performs it while
-  no window is open. Its failure is reported like any other action's and
-  leaves the daemon serving.
-
-- **Window extent.** A drain that opened a window keeps the daemon stopped
-  while any recorded action that runs inside a window remains actionable,
-  activations recorded while the window is open included. It starts the daemon
-  only on the checkout's tip, once no such action remains actionable and that
-  tip's own advancement is registered — its owed set resolved by the commit
-  boundary, empty or not.
-  Registration waits from that final check until the window has closed, so an
-  advancement registered before the close runs inside the window and the daemon
-  starts once, after its actions; one registered after the close runs in a
-  window of its own. When the tip's advancement is not yet registered at the
-  final check, the window registers it itself through the commit boundary's
-  recording, over the range from the checkout's previous position to the tip —
-  the range that advancement's own hook resolves — and a later recording of the
-  same advancement is a repeated recording. A registration the window cannot
-  complete leaves the daemon stopped: each restart action the window covered
-  ends failed with that refusal's reason, the reason and its time are recorded
-  where `make status` reports them, and replaying a restart action once the
-  cause is resolved reopens the window on the stopped daemon. When the
-  checkout's tip moved after the final check, the window registers that
-  advancement in the same way; if it owes the restart action, the start it
-  overtook is stopped again within the same window, which runs that
-  advancement's actions and starts the daemon from it after them, so the daemon
-  is never left serving an advancement whose owed actions that run inside a
-  window have not run. An
-  advancement that owes no restart runs after the close while the daemon
-  serves, as any such activation does. An activation that
-  owed the restart action keeps that obligation while any of its records for an
-  action that runs inside a window remains, so replaying one of those failed
-  actions runs inside a window of its own; replaying a failed action that runs
-  while the daemon serves leaves the daemon serving.
-
-- **Window failure.** The window opens only on the outcome `make stop` records
-  as stopped — the daemon exited and its relaunch suppressed — including a stop
-  that also reports a managed-unit cleanup failure, which is reported with the
-  opening (`local/projects/teleclaude/policy/daemon-availability`). Any other
-  outcome than stopped or incomplete preparation leaves the window unopened:
-  nothing starts, stops or replaces the daemon further, the activation's
-  actions stay recorded and unperformed, the refusal is reported at error level
-  with its reason, and the reason and its time are recorded where `make status`
-  reports them. A failed action inside an open window is reported and the
-  window still closes. A start that does not verify
-  is the restart action's terminal failure, carrying the start's reason; the
-  reason and its time are also recorded where `make status` reports them until
-  a later window verifies a start.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
-
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-- **Observation.** Every attempt and terminal outcome retains the immutable
-  activation and action identity in structured records. The commit boundary
-  records a checkout-scoped integrator judgment for every qualifying code
-  activation after its owed action records are durable, including a direct main
-  commit with no todo candidate. The judgment retains the activation time and
-  becomes eligible only after all owed actions succeed, the restart action
-  succeeding only on its window's verified start; whether the runtime then
-  behaves correctly belongs to the integrator's log judgment, not to the
-  action. The drain records the latest maintenance-ready time
-  on that marker; if interrupted before recording readiness, the judgment stays
-  outstanding for integrator recovery even when action files are absent. A log
-  read can discharge it only after that ready time
-  with a window covering the activation through completed maintenance. Operational
-  anomaly detection observes failed or stale actions. A regular committer has no
-  post-commit maintenance log judgment. The standing integrator is woken by the
-  activation's settlement announcement, judges the relevant runtime evidence
-  after owed actions complete, and owns bounded recovery. The log bug hunter remains a later anomaly backstop. Maintenance
-  completion sends no notification to the committer.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
   records a checkout-scoped integrator judgment for every qualifying code
@@ -358,8 +198,6 @@ contract governs only what happens when maintenance runs.
   relevant runtime evidence after owed actions complete, and owns bounded
   recovery. The log bug hunter remains a later anomaly backstop. Maintenance
   completion sends no notification to the committer.
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 ### Use cases
 
@@ -509,24 +347,7 @@ And operational anomaly detection can report it
 But the drain does not retry that terminal failure indefinitely
 ```
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
 #### UC-PCM15: The standing integrator owns maintenance observation
-
-```gherkin
-Given a canonical-main change owes daemon restart or publication maintenance
-When Git returns before that maintenance finishes
-Then the regular committer has no maintenance log-check obligation
-And the standing integrator observes the owed action and judges its result after completion
-And later anomalies remain discoverable by the log bug hunter
-But maintenance completion sends no prompt to the committer
-```
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
-#### UC-PCM15: The standing integrator owns maintenance observation
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 #### UC-PCM16: Direct main commits reach the integrator through their settlement
 
@@ -562,175 +383,6 @@ And no generated AGENTS.md beside those masters enters the commit, because the r
 But the same path shape in an ordinary project does not acquire a home-only maintenance binding
 ```
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-#### UC-PCM19: A restart owed by an integration does not close admission on that integration
-
-```gherkin
-Given an integration advances canonical main and its activation owes a daemon restart
-And that integration's own accepted work is still running in the daemon
-When the stopped-daemon window opens
-Then the daemon keeps accepting work while any accepted work is held, up to the window's bound
-And preparation begins once the daemon holds no accepted work, or when the bound expires
-And the integration completes without having had its own window close admission around it
-```
-
-#### UC-PCM20: Steps that change what the daemon runs on run against a stopped daemon
-
-```gherkin
-Given a canonical-main advancement owes a daemon restart together with dependency, installation and configuration migration steps
-When its maintenance runs
-Then the daemon has stopped before the first of those steps begins
-And none of those steps begins while a daemon process serves
-And the daemon is started after the last of them has a terminal outcome
-And an agent reading the structured records observes the window opening, each of those steps' outcomes and the window closing in that order
-```
-
-#### UC-PCM21: Unsettled work keeps the window waiting, not the steps running
-
-```gherkin
-Given a canonical-main advancement owes a daemon restart
-And the daemon holds accepted work that does not settle within its preparation observation window
-When the stopped-daemon window opens
-Then each expired observation window is reported in the structured records
-And no owed step runs while the daemon is draining
-And the owed steps that run inside a window run once the daemon has stopped
-```
-
-#### UC-PCM22: A failed step still ends with the daemon started and verified
-
-```gherkin
-Given a canonical-main advancement owes a daemon restart and another step
-When that other step fails inside the stopped-daemon window
-Then the remaining owed steps that run inside a window still run
-And the daemon is started and verified after the last of them
-And the failed step remains recorded as failed with its replay
-```
-
-#### UC-PCM23: A start that does not verify leaves its reason where an agent looks first
-
-```gherkin
-Given a canonical-main advancement owes a daemon restart
-When the daemon started at the window's close does not answer healthy with admission open on the checkout's tip within the window's bound
-Then the restart action ends failed with the start's reason
-And an agent running make status sees that reason and when it was recorded
-```
-
-#### UC-PCM24: A refused stop performs no step
-
-```gherkin
-Given a canonical-main advancement owes a daemon restart
-When make stop withholds the stop for a reason other than incomplete preparation and the daemon still serves
-Then the daemon keeps serving
-And none of the activation's owed steps has run
-And an agent reading the structured records observes the refusal and its reason
-And the activation's owed actions remain recorded for a later drain
-```
-
-#### UC-PCM25: Replaying a failed step of a restart-owing activation stops the daemon again
-
-```gherkin
-Given an activation that owed a daemon restart recorded one of its steps that run inside a window as failed
-When an agent replays that failed step
-Then the daemon is stopped before the replayed step runs
-And the daemon is started and verified after it
-```
-
-#### UC-PCM26: A documentation-only advancement leaves the daemon serving
-
-```gherkin
-Given a canonical-main commit in the platform's checkout changing only documentation
-When its maintenance runs
-Then the daemon keeps serving throughout
-And the publication step runs
-```
-
-#### UC-PCM27: Advancements recorded during a window share it
-
-```gherkin
-Given a stopped-daemon window is open for one canonical-main advancement
-When another advancement records its own owed actions before the window closes
-Then the later advancement's actions that run inside a window run inside the same window
-And the daemon is started once, after those actions of both advancements have terminal outcomes
-```
-
-#### UC-PCM28: A stop that does not establish a stopped daemon leaves it untouched with its reason
-
-```gherkin
-Given a canonical-main advancement owes a daemon restart
-When make stop records an outcome other than stopped or incomplete preparation
-Then none of the activation's owed steps has run
-And the window neither starts nor replaces the daemon
-And an agent running make status sees the stop's reason and when it was recorded
-```
-
-#### UC-PCM29: An installation-only advancement stops the daemon
-
-#### UC-PCM30: Installation inside a window leaves sessions running
-
-```gherkin
-Given agent sessions run in the tmux server
-And a canonical-main advancement owes installation while the tmux server's rendered definition differs from the deployed one
-When its maintenance runs inside the stopped-daemon window
-Then the sessions are still running after the window closes
-And an agent reading the structured records observes that the tmux server definition change was deferred
-```
-
-#### UC-PCM31: A stop that stopped the daemon but failed a unit cleanup still opens the window
-
-```gherkin
-Given a canonical-main advancement owes a daemon restart
-When make stop records that the daemon stopped with its relaunch suppressed and a managed-unit cleanup failed
-Then the window opens and the owed steps run
-And an agent reading the structured records observes the cleanup failure
-```
-
-#### UC-PCM32: An advancement still registering when the window's last step ends shares the window
-
-```gherkin
-Given a stopped-daemon window is open for one canonical-main advancement
-And another canonical-main commit has advanced the checkout but its owed actions are not yet recorded when the window's last owed step ends
-When the window reaches its final check
-Then that commit's owed actions are recorded once, and those that run inside a window run inside the same window
-And the daemon is started once, from that commit, after they have terminal outcomes
-```
-
-#### UC-PCM33: A start overtaken by a further advancement is stopped again before that advancement runs
-
-```gherkin
-Given a stopped-daemon window has started the daemon after its last owed step
-And another canonical-main commit that owes a daemon restart advanced the checkout while that start was in progress
-When the window checks the start it made
-Then the daemon is stopped again before any of that commit's owed actions runs
-And its actions that run inside a window run inside the same window
-And the daemon is started and verified from that commit after they have terminal outcomes
-```
-
-#### UC-PCM34: A tip whose owed actions cannot be recorded leaves the daemon stopped with its reason
-
-```gherkin
-Given a stopped-daemon window has run its last owed step
-And the checkout's tip is a commit whose owed actions cannot be recorded
-When the window tries to record them
-Then the daemon stays stopped
-And each restart action the window covered ends failed with the refusal's reason
-And an agent running make status sees that reason and when it was recorded
-And replaying a restart action after the cause is resolved records the tip's owed actions, runs those that run inside a window and starts the daemon from the tip
-```
-
-#### UC-PCM35: A code commit keeps the daemon down only for the steps that need it stopped
-
-```gherkin
-Given a canonical-main commit changing daemon source owes a daemon restart, Blueprint maintenance and publication
-When its maintenance runs
-Then the daemon is started and verified before Blueprint maintenance and publication begin
-And Blueprint maintenance and publication run while the started daemon serves
-And an agent reading the structured records observes the window closing before either of them starts
-And replaying either of them after a failure leaves the daemon serving
-```
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
 #### UC-PCM19: A restart owed by an integration does not close admission on that integration
 
 #### UC-PCM20: Steps that change what the daemon runs on run against a stopped daemon
@@ -764,41 +416,11 @@ And replaying either of them after a failure leaves the daemon serving
 #### UC-PCM34: A tip whose owed actions cannot be recorded leaves the daemon stopped with its reason
 
 #### UC-PCM35: A code commit keeps the daemon down only for the steps that need it stopped
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
-
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-## Known caveats
-
-- Nothing gates an advancement of the canonical checkout while the window
-  starts the daemon: a commit or fast-forward that lands during the start
-  changes the files the starting daemon loads. Such a daemon can begin serving
-  that advancement's code for the moments between its start and the window's
-  check after it, which stops it again before the advancement's owed actions
-  run.
-- A commit-boundary registration that arrives while a window is closing waits
-  for that close, so the commit or merge whose hook records it returns only
-  after the window's start has been verified or has failed.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 ## See Also
 
 - docs/local/adr/0087-mechanical-maintenance-executes-in-a-hook.md — the decision this contract realizes.
 - docs/local/adr/0100-commit-maintenance-drains-after-hook-return.md — why maintenance execution no longer holds Git open.
-
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-- docs/local/adr/0124-maintenance-replaces-the-daemon-inside-a-stopped-window.md — why an activation owing a restart runs its steps against a stopped daemon.
-
-- docs/local/adr/0127-maintenance-runs-serving-tolerant-steps-after-the-verified-start.md — why the steps that replace nothing the daemon runs on run after the window's verified start.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - docs/local/design/architecture/checkpoint-system.md — the matcher and registry this surface consumes.
 - docs/local/spec/feature/reconciliation/project-plumbing-convergence.md — which hooks a project has installed, and when.

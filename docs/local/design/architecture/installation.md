@@ -129,34 +129,6 @@ flowchart LR
 The act is reconciliation's; each step consumes the owning context's contract
 and restates none of it.
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-```mermaid
-sequenceDiagram
-  participant Caller as bootstrap / channel reaction / telec app install
-  participant Rec as reconciliation (install act)
-  participant Rel as new release
-  participant Life as daemon lifecycle
-  participant Home as platform home
-  participant TUI as presentation (TUI registry)
-  Caller->>Rec: install(target)
-  Rec->>Rec: refuse when target is older than the active release
-  Rec->>Rel: fetch, add worktree at target, build environment (daemon serving)
-  Rec->>Life: stop (preparation settles accepted work)
-  Rec->>Rel: run ledger migrations, then open every store the daemon opens
-  Rel-->>Rec: each owner: starting a migration
-  Rel->>Home: migrate stores
-  Rec->>Rec: switch current
-  Rec->>Life: start; verify the daemon serves the new revision
-  Rec->>Rec: record outcome and whether migrations ran
-  Rec->>TUI: reload every running terminal interface
-  Rec->>TUI: read the releases running terminal interfaces hold
-  Rec->>Rec: prune older releases no running terminal interface holds
-  Rec->>Rel: publish schemas, and documentation where no platform checkout does
-```
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
 ```mermaid
 sequenceDiagram
   participant Caller as bootstrap / channel reaction / telec app install
@@ -182,8 +154,6 @@ sequenceDiagram
   Rel->>Rel: publish schemas, and documentation where no platform checkout does
   Rel->>Rel: converge every registered root and the platform home to its templates
 ```
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - **Prepare while serving.** Fetching, adding the release worktree and building
   its environment happen while the daemon keeps serving on the active release,
@@ -249,22 +219,6 @@ sequenceDiagram
   An interface still on its old release at prune time keeps that release until
   a later install finds it moved.
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-- **Publication follows the install.** Publication of the configuration
-  schemas
-  (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
-  and of the installed commit's documentation and agent artifacts
-  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
-  runs after the completed install while the daemon serves. Each keeps its own
-  partial-outcome contract; a failure is reported and replayed and never
-  changes which release is active. The documentation is the installed
-  release's only on a machine with no project checkout of the platform; where
-  that checkout is registered, it publishes the platform's documentation from
-  its own commits on main, and an install leaves it in place.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
 - **Publication and fleet convergence follow the install.** After the
   completed install, while the daemon serves, the act runs the installed
   release's one post-install step through that release's own interpreter. The
@@ -294,8 +248,6 @@ sequenceDiagram
   fails, it records the failure owed and stops before that call. The owed
   failure is replayed by the next install of the active revision, which the
   installed release's own act performs.
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 ### Rollback
 
@@ -415,19 +367,9 @@ checkout stays a registered project.
   where `telec app status` shows it, and recovery is a forward repair followed
   by another install.
 
-<!-- planned-change:commit-maintenance-sheds-platform-work -->
-
-- **Publication fails after a completed install**: the daemon keeps serving the
-  new release; the failure is recorded with the owning publisher's partial
-  outcome and replayed.
-
-<!-- change:commit-maintenance-sheds-platform-work -->
-
 - **Publication or fleet convergence fails after a completed install**: the
   daemon keeps serving the new release; the failure is recorded with the
   owning step's partial outcome and replayed.
-
-<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - **A release folder disappears**: nothing live names it, so only a rollback to
   it is affected, and rollback refuses with that reason.
