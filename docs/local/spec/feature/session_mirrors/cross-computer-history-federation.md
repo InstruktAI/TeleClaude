@@ -26,6 +26,21 @@ and the merged result list is re-sorted by `sort_timestamp` descending
 before rendering. For show, exactly one computer is allowed; a request naming
 multiple computers is refused before any remote call.
 
+<!-- planned:history-search-all-computers -->
+
+`all` is the reserved value of `--computer` that names every computer in the
+fleet roster `telec computers list` reports, this computer included. A search
+naming `all` searches this computer and every computer the roster lists
+online, exactly as a search naming each of them would. A computer the roster
+lists offline is reported as not searched, with that reason, and no request is
+sent to it. `all` stands alone: a search naming it beside another computer is
+refused before any computer is searched. For show, `all` names more than one
+computer and is refused like any other such request. At the CLI edge, a search
+naming `all` is cleared for this computer as a local search is, and for the
+other computers as a search naming them is
+(`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+<!-- /planned:history-search-all-computers -->
+
 ## Canonical fields
 
 ### Use cases
@@ -48,6 +63,40 @@ Scenario: Partial remote failures remain visible with successful results
   And successful remote results are still rendered
   And if no computer succeeds, the empty-result message names all requested computers
 ```
+
+<!-- planned:history-search-all-computers -->
+
+#### UC-CCHF-9: An operator searches history on every computer in the fleet
+
+```
+Scenario: Search every computer without naming them
+  Given the fleet roster lists computers A and B online beside this computer
+  When an operator runs `telec history search <terms> --computer all`
+  Then this computer, A and B are searched in parallel
+  And matching conversations from all three appear in one result list, newest first
+  And each result identifies its computer
+
+Scenario: A computer the roster lists offline is named, not searched
+  Given the fleet roster lists computer C offline
+  When an operator runs `telec history search <terms> --computer all`
+  Then C is reported as not searched because it is offline
+  And no request is sent to C
+  And the results of every searched computer are still rendered
+
+Scenario: all stands alone
+  When an operator runs `telec history search <terms> --computer all --computer A`
+  Then the search is refused before any computer is searched
+  And the refusal states that `all` cannot be combined with named computers
+
+Scenario: The roster cannot be read
+  Given this computer's daemon does not accept the request for the fleet roster
+  When an operator runs `telec history search <terms> --computer all`
+  Then this computer's results are rendered
+  And the failure to reach the rest of the fleet is reported with the daemon's cause
+  And the command exits non-zero
+```
+
+<!-- /planned:history-search-all-computers -->
 
 #### UC-CCHF-5: Cross-computer search travels the daemon relay
 
@@ -72,11 +121,29 @@ Scenario: The peer cannot answer the request
 
 ## Known caveats
 
+<!-- planned-change:history-search-all-computers -->
+
 - When `--computer` is set, only the named computers are searched: local
   mirrors on the dispatching host are included only when its own name is among
   them. There is no "include local" toggle; an operator wanting the local
   results beside remote ones names the local computer too, or runs the command
   twice (once with `--computer`, once without).
+
+<!-- change:history-search-all-computers -->
+
+- When `--computer` is set, only the named computers are searched: local
+  mirrors on the dispatching host are included only when its own name, or
+  `all`, is among them. There is no "include local" toggle; an operator
+  wanting the local results beside remote ones names the local computer too,
+  or names `all`.
+- A search without `--computer` reads only this computer. The roster keeps a
+  computer it discovered listed online until this computer's daemon restarts,
+  even after that computer leaves the fleet, so a search of every computer
+  waits out the request's time limit for one that has left and reports it as
+  failed.
+
+<!-- /planned-change:history-search-all-computers -->
+
 - A remote request waits a bounded time for the peer's relay answer. A slow
   or paused peer produces a timeout failure without retry.
 - The remote search payload omits some local-only columns
