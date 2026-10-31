@@ -56,7 +56,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: '0.13.4'
+          version: '0.13.6'
 
       - name: Run full disposable CLI runtime profile
         timeout-minutes: 10
@@ -96,7 +96,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: '0.13.4'
+          version: '0.13.6'
 
       - name: Merge minor/patch updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
