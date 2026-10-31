@@ -522,13 +522,18 @@ class DbInboundMixin:
             return await db_session.get(db_models.InboundQueue, row_id)
 
     async def get_unbound_delivered_caller_inbound(self, session_id: str) -> list[InboundQueueRow]:
-        """Return post-cutover caller receipts awaiting a native-entry binding."""
+        """Return keyed caller-send receipts awaiting a native-entry binding.
+
+        The population is the receipt's class, not its caller metadata: a keyed ``caller_send`` row whose
+        metadata did not survive acceptance still reaches the binder, which dispositions it without an author.
+        """
         associated_ids = select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id)
         statement = (
             select(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
             .where(db_models.InboundQueue.status == _DELIVERED_STATUS)
-            .where(db_models.InboundQueue.caller_session_id.is_not(None))  # type: ignore[union-attr]
+            .where(db_models.InboundQueue.source_feature == InjectedTextSourceFeature.CALLER_SEND.value)
+            .where(db_models.InboundQueue.occurrence_key.is_not(None))  # type: ignore[union-attr]
             .where(db_models.InboundQueue.binding_disposition.is_(None))  # type: ignore[union-attr]
             .where(db_models.InboundQueue.id.notin_(associated_ids))
             .order_by(db_models.InboundQueue.id.asc())  # type: ignore[arg-type]
