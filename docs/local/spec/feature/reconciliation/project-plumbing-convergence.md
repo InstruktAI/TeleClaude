@@ -257,8 +257,6 @@ And the same holds for a project that subscribes neither code nor docs
 
 #### UC-RPC19: An on-demand maintenance run converges the root it runs in
 
-<!-- planned:plumbing-resmudge-index-lock-deletes-file -->
-
 #### UC-RPC20: An operator's documentation stays in place when another git operation blocks its refresh
 
 ```gherkin
@@ -267,8 +265,6 @@ And another git operation holds the project's index
 When TeleClaude converges the project's plumbing
 Then that documentation stays in the operator's working tree with its committed content
 ```
-
-<!-- /planned:plumbing-resmudge-index-lock-deletes-file -->
 
 ## Known caveats
 
