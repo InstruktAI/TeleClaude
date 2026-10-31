@@ -1131,8 +1131,6 @@ PY
         overall_ok=1
     fi
 
-    "$DAEMON_CONTROL_PYTHON" -m teleclaude.core.integration.daemon_window || true
-
     if [ $overall_ok -eq 0 ]; then
         log_info "Daemon health: HEALTHY (API components responding)"
         return 0

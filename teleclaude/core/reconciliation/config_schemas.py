@@ -47,6 +47,8 @@ _PUBLICATION_CONFLICT_EVENT: Final = "config_schema_publication_conflict"
 _LINK_EVENT: Final = "project_config_schema_link"
 _SCHEMA_TARGET_CONFLICT: Final = "Configuration schema target is not a directory: {target}"
 _PUBLICATION_SUMMARY: Final = "config-schemas: target={target} written={written} unchanged={unchanged}"
+_FAILED_EXIT_CODE: Final = 1
+_SUCCEEDED_EXIT_CODE: Final = 0
 _KNOWN_SCHEMA_FILENAMES: Final = frozenset(
     {schema_filename(kind) for kind in ConfigKind} | {COMPUTER_SCHEMA_FILENAME, MCP_SCHEMA_FILENAME}
 )
@@ -248,13 +250,13 @@ def remove_stray_schema_copy(root: Path) -> SchemaCopyDisposition:
     return SchemaCopyDisposition.REMOVED
 
 
-def main() -> None:
-    """Publish schemas into the active machine home and report the result."""
+def run_schema_publication() -> int:
+    """Publish schemas into the active machine home, report the result, and answer the exit code."""
     try:
         result = publish_config_schemas()
     except SchemaPublicationConflict as error:
         print(str(error))
-        raise SystemExit(1) from error
+        return _FAILED_EXIT_CODE
     print(
         _PUBLICATION_SUMMARY.format(
             target=result.target,
@@ -262,6 +264,14 @@ def main() -> None:
             unchanged=", ".join(result.unchanged),
         ),
     )
+    return _SUCCEEDED_EXIT_CODE
+
+
+def main() -> None:
+    """Publish schemas into the active machine home and report the result."""
+    exit_code = run_schema_publication()
+    if exit_code != _SUCCEEDED_EXIT_CODE:
+        raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

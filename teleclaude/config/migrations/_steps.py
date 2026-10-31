@@ -35,6 +35,7 @@ from teleclaude.config.migrations import (
     v028_split_redis_by_scope,
     v029_declare_cluster_redis_username,
     v030_declare_ingress_receiver,
+    v031_retire_maintenance_runs_while_serving,
 )
 
 STEPS: Final = (
@@ -68,4 +69,5 @@ STEPS: Final = (
     v028_split_redis_by_scope,
     v029_declare_cluster_redis_username,
     v030_declare_ingress_receiver,
+    v031_retire_maintenance_runs_while_serving,
 )

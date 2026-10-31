@@ -33,7 +33,6 @@ _ACTIVATION_REGISTRATION_LOCK_FILENAME = "activation-registration.lock"
 _TEXT_ENCODING = "utf-8"
 _NEWLINE = "\n"
 _OUTPUT_TAIL_FIELD = "output_tail"
-_WINDOW_FAILURE_FILENAME = "window-failure.json"
 _ACTIVATION_REGISTRATIONS_FILENAME = "activation-registrations.json"
 _MAX_ACTIVATION_REGISTRATIONS = 512
 _PENDING_SETTLEMENTS_FILENAME = "pending-settlements.json"
@@ -68,15 +67,6 @@ class _EventRecordPayload(BaseModel):
     exit_code: int | None
     finished_at: str | None
     output_tail: str | None
-
-
-class _WindowFailurePayload(BaseModel):
-    """Closed wire model for the last maintenance-window failure visible to status."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    reason: str
-    recorded_at: str
 
 
 class _ActivationRegistrationEntry(BaseModel):
@@ -125,14 +115,6 @@ class _PendingSettlementsPayload(BaseModel):
 
 
 @dataclass(frozen=True)
-class WindowFailure:
-    """The last refused window opening or unverified window close."""
-
-    reason: str
-    recorded_at: str
-
-
-@dataclass(frozen=True)
 class ActivationRegistration:
     """The recorded outcome of resolving an advancement's owed action set."""
 
@@ -145,7 +127,6 @@ class MaintenanceRecordState(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     FAILED = "failed"
-    HELD = "held"
 
 
 @dataclass(frozen=True)
@@ -213,31 +194,6 @@ def maintenance_activation_registration_lock(project_root: str | Path) -> Iterat
             yield
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-
-def window_failure_path(project_root: str | Path) -> Path:
-    """Return the durable status record for the last failed maintenance window."""
-    return maintenance_directory(project_root) / _WINDOW_FAILURE_FILENAME
-
-
-def read_window_failure(project_root: str | Path) -> WindowFailure | None:
-    """Read the last failed maintenance window, if one remains recorded."""
-    path = window_failure_path(project_root)
-    if not path.exists():
-        return None
-    payload = _WindowFailurePayload.model_validate_json(path.read_text(encoding=_TEXT_ENCODING))
-    return WindowFailure(reason=payload.reason, recorded_at=payload.recorded_at)
-
-
-def write_window_failure(project_root: str | Path, failure: WindowFailure) -> None:
-    """Atomically replace the status record with the last failed maintenance window."""
-    payload = _WindowFailurePayload(reason=failure.reason, recorded_at=failure.recorded_at)
-    _write_atomically(window_failure_path(project_root), payload.model_dump_json())
-
-
-def clear_window_failure(project_root: str | Path) -> None:
-    """Clear the status record after a later maintenance window verifies recovery."""
-    window_failure_path(project_root).unlink(missing_ok=True)
 
 
 def read_activation_registration(project_root: str | Path, after_sha: str) -> ActivationRegistration | None:

@@ -388,6 +388,16 @@ def _print_root_line(result: PlumbingConvergenceResult) -> None:
     )
 
 
+def run_fleet_convergence() -> int:
+    """Converge every registered root and the platform home, report each outcome, and answer the exit code."""
+    run_result = converge_registered_roots()
+    for root_result in run_result.results:
+        _print_output_results(root_result)
+        _print_root_line(root_result)
+    print(_RUN_RESULT.format(outcome=run_result.outcome, root_count=run_result.root_count))
+    return 1 if run_result.outcome is PlumbingConvergenceRunOutcome.FAILED else 0
+
+
 def main() -> None:
     """Run fleet convergence, or one-root convergence for installers and maintenance.
 
@@ -400,13 +410,9 @@ def main() -> None:
     if plumbing_only:
         arguments = arguments[1:]
     if not arguments and not plumbing_only:
-        run_result = converge_registered_roots()
-        for root_result in run_result.results:
-            _print_output_results(root_result)
-            _print_root_line(root_result)
-        print(_RUN_RESULT.format(outcome=run_result.outcome, root_count=run_result.root_count))
-        if run_result.outcome is PlumbingConvergenceRunOutcome.FAILED:
-            raise SystemExit(1)
+        exit_code = run_fleet_convergence()
+        if exit_code:
+            raise SystemExit(exit_code)
         return
     if len(arguments) != 1:
         raise SystemExit(_ROOT_ARGUMENT_REQUIRED)

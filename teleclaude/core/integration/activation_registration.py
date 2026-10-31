@@ -9,7 +9,7 @@ from teleclaude.checkpoint_model import (
     ActivationRange,
     main_only_judgment_action_ids_for_files,
 )
-from teleclaude.constants import LOG_CHECK_ACTION_ID, RESTART_MAINTENANCE_ACTION_ID, CheckpointModel
+from teleclaude.constants import LOG_CHECK_ACTION_ID
 from teleclaude.core.integration._maintenance_records import (
     MaintenanceActionRecord,
     MaintenanceRecordState,
@@ -20,7 +20,6 @@ from teleclaude.core.integration._maintenance_records import (
 from teleclaude.git import Repo
 from teleclaude.hooks.integrator_judgment_marker import record_integrator_judgment_activation
 
-_ZERO_SHA_CHARACTER = "0"
 _SYNC_ACTION_ID = "sync"
 _GIT_HEAD_REFERENCE = "HEAD"
 _GIT_ORIGINAL_HEAD_REFERENCE = "ORIG_HEAD"
@@ -45,35 +44,6 @@ def resolve_post_commit_activation_range(project_root: Path) -> ActivationRange:
 def resolve_post_merge_activation_range(project_root: Path) -> ActivationRange:
     """Resolve the pre-merge and post-merge tips before any maintenance runs."""
     return resolve_activation_range(project_root, _GIT_ORIGINAL_HEAD_REFERENCE, _GIT_HEAD_REFERENCE)
-
-
-def resolve_current_tip_activation_range(project_root: Path, after_sha: str | None = None) -> ActivationRange:
-    """Resolve an unregistered checkout tip from the previous HEAD reflog position."""
-    repository = Repo(str(project_root.resolve()))
-    after_commit = repository.commit(after_sha or _GIT_HEAD_REFERENCE)
-    after = after_commit.hexsha
-    previous = next(
-        (entry.oldhexsha for entry in reversed(repository.head.log()) if entry.newhexsha == after),
-        None,
-    )
-    before = None if previous is None or not previous.strip(_ZERO_SHA_CHARACTER) else previous
-    return ActivationRange(before_sha=before, after_sha=after)
-
-
-def derive_window_action(
-    action_ids: tuple[str, ...], path_action_ids: tuple[str, ...], model: CheckpointModel
-) -> tuple[str, ...]:
-    """Owe the replacement action when selected path work is not serving-tolerant."""
-    actions = tuple(action_id for action_id in action_ids if action_id != RESTART_MAINTENANCE_ACTION_ID)
-    if RESTART_MAINTENANCE_ACTION_ID not in model.maintenance:
-        return actions
-    if any(
-        action_id != RESTART_MAINTENANCE_ACTION_ID
-        and (action_id not in model.maintenance or not model.maintenance[action_id].runs_while_serving)
-        for action_id in path_action_ids
-    ):
-        return (*actions, RESTART_MAINTENANCE_ACTION_ID)
-    return actions
 
 
 def write_owed_records(
