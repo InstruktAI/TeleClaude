@@ -1,4 +1,4 @@
-"""Evaluate one agent stop for a session and return its checkpoint text, or `None` when no checkpoint work is established or evaluation fails."""
+"""Evaluate one agent stop for a session and return its checkpoint body, or `None` when no checkpoint work is established or evaluation fails."""
 
 from collections.abc import Mapping
 from pathlib import Path
@@ -72,7 +72,7 @@ def build_checkpoint_message(
     context: CheckpointContext,
     log_since_window: str = "2m",
 ) -> str | None:
-    """Build a structured checkpoint message from all signal sources."""
+    """Build a structured checkpoint body from all signal sources."""
     result = run_heuristics(git_files, timeline, context, log_since_window=log_since_window)
     return _compose_checkpoint_message(git_files, result)
 
@@ -95,7 +95,8 @@ def get_checkpoint_content(
     transcript extraction, and message building.
 
     Returns:
-    - str: checkpoint payload when maintenance work is established.
+    - str: the checkpoint body, unrendered, when maintenance work is established. The
+      delivery path that reaches the agent wraps it in the checkpoint envelope.
     - None: no checkpoint work is established or evaluation fails.
     """
     try:

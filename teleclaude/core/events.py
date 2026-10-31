@@ -25,6 +25,7 @@ class AgentHookEvents(StrEnum):
     AGENT_SESSION_START = "session_start"
     AGENT_STOP = "agent_stop"
     AGENT_TURN_FAILED = "agent_turn_failed"
+    CHECKPOINT_RELAY = "checkpoint_relay"
     CHECKPOINT_SEEN = "checkpoint_seen"
     NATIVE_METADATA_UPDATE = "native_metadata_update"
     NATIVE_SESSION_REFRESH = "native_session_refresh"
@@ -34,6 +35,13 @@ class AgentHookEvents(StrEnum):
 
 
 AgentHookEventType = AgentHookEvents
+
+
+class CheckpointRelayField(StrEnum):
+    """Payload fields of a checkpoint-relay outbox entry."""
+
+    BODY = "checkpoint_body"
+    RECEIVER_INGRESS_ID = "receiver_ingress_id"
 
 
 ALL_AGENT_HOOK_EVENTS: frozenset[AgentHookEventType] = frozenset(AgentHookEvents)

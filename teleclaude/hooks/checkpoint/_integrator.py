@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import LOG_CHECK_ACTION_ID, CheckpointAction, CheckpointModel, JudgmentOwner
-from teleclaude.core.injected_text import checkpoint_text
 from teleclaude.core.roles import RoleName
 from teleclaude.hooks.checkpoint._directives import _ESCAPE_HATCH, _RESPONSE_POLICY, _surface_run
 from teleclaude.hooks.checkpoint._evidence import (
@@ -152,7 +151,7 @@ def _build_integrator_log_judgment_checkpoint(
             _ESCAPE_HATCH,
         ]
     )
-    return checkpoint_text("\n".join(lines))
+    return "\n".join(lines)
 
 
 def _integrator_judgment_checkpoint(
