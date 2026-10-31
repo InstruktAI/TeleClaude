@@ -28,6 +28,14 @@ HUMAN_PRINCIPAL_PREFIX = "human:"
 SYSTEM_PRINCIPAL_PREFIX = "system:"
 VISITOR_PRINCIPAL_PREFIX = "visitor:"
 TELEC_COMMAND_PREFIX = "telec "
+OWNER_COMMAND_ADMISSION_SCOPE_KEY = "teleclaude.owner_command_admission"
+
+
+@dataclass(frozen=True)
+class OwnerCommandAdmission:
+    """A command admitted by the receiving owner for one re-entered request."""
+
+    command: str | None
 
 
 class SessionIdentityError(ValueError):

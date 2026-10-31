@@ -23,12 +23,14 @@ from typing import Final
 
 import httpx
 from instrukt_ai_logging import get_logger
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from teleclaude.caller_identity import (
+    OWNER_COMMAND_ADMISSION_SCOPE_KEY,
     CarriedIdentity,
     CliCaller,
     NoIdentityCliCaller,
+    OwnerCommandAdmission,
     Person,
     PersonCliCaller,
     Platform,
@@ -270,12 +272,20 @@ def _owner_identity(command: RelayRequestCommand, caller: CliCaller) -> CarriedI
     )
 
 
-async def _reenter(command: RelayRequestCommand, identity: CarriedIdentity) -> RelayedResponse:
+async def _reenter(
+    command: RelayRequestCommand, identity: CarriedIdentity, admission: OwnerCommandAdmission
+) -> RelayedResponse:
     app = _REENTRY.app
     if app is None:
         raise _RelayRefused(
             HTTPStatus.SERVICE_UNAVAILABLE, _APP_UNAVAILABLE_DETAIL.format(computer=config.computer.name)
         )
+
+    async def admitted_app(scope: Scope, receive: Receive, send: Send) -> None:
+        request_scope = dict(scope)
+        request_scope[OWNER_COMMAND_ADMISSION_SCOPE_KEY] = admission
+        await app(request_scope, receive, send)
+
     headers = identity.to_headers()
     if command.content_type:
         headers[_CONTENT_TYPE_HEADER] = command.content_type
@@ -283,7 +293,7 @@ async def _reenter(command: RelayRequestCommand, identity: CarriedIdentity) -> R
     relayed = RelayedCaller(computer=command.caller_computer or "", session_id=command.caller_session_id)
     token = set_relayed_caller(relayed if command.caller_computer else None)
     try:
-        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        transport = httpx.ASGITransport(app=admitted_app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url=_REENTRY_BASE_URL) as client:
             response = await client.request(
                 command.method,
@@ -331,7 +341,9 @@ async def handle_relay_request(command: RelayRequestCommand) -> JsonDict:
             caller_session_id=command.caller_session_id,
             caller_computer=command.caller_computer,
         )
-        response = await _reenter(command, _owner_identity(command, caller))
+        response = await _reenter(
+            command, _owner_identity(command, caller), OwnerCommandAdmission(command.cleared_command)
+        )
     except _RelayRefused as refusal:
         logger.info(
             _REFUSED_EVENT,
