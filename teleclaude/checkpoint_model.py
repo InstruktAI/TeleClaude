@@ -404,7 +404,6 @@ def merge_overlay(
                     precedence=action_cfg.precedence,
                     on_demand=action_cfg.on_demand,
                     owed_probe=tuple(action_cfg.owed_probe) if action_cfg.owed_probe is not None else None,
-                    runs_while_serving=action_cfg.runs_while_serving,
                 ),
                 project_slug,
             )

@@ -46,7 +46,6 @@ class CheckpointMaintenanceConfig(ClosedModel):
     precedence: int = 0
     on_demand: OnDemandDisposition = OnDemandDisposition.RUN
     owed_probe: list[str] | None = Field(default=None, min_length=1)
-    runs_while_serving: bool = False
 
     @model_validator(mode="after")
     def validate_probe_belongs_to_deferred_action(self) -> CheckpointMaintenanceConfig:

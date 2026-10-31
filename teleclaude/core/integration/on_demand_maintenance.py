@@ -3,8 +3,7 @@
 The steps are every maintenance action the root's committed declaration (platform base merged
 with the project overlay) declares, except an action only an event binding names, which has no
 event to act on here. They run through the commit-boundary executor under its lock, one by one
-with each outcome reported as it completes. A root that declares daemon replacement runs only
-window-bound steps while stopped, then serving-tolerant steps after its start is verified.
+with each outcome reported as it completes.
 """
 
 from __future__ import annotations
@@ -25,19 +24,15 @@ from teleclaude.checkpoint_model import (
     fill_on_demand,
     load_committed_checkpoint_model,
 )
-from teleclaude.constants import RESTART_MAINTENANCE_ACTION_ID, MaintenanceAction, OnDemandDisposition
+from teleclaude.constants import MaintenanceAction, OnDemandDisposition
 from teleclaude.core.dirty_path_owners import DirtyPathOwner, resolve_dirty_path_owners
 from teleclaude.core.integration._maintenance_records import (
     EventActivation,
     MaintenanceActionRecord,
     MaintenanceRecordState,
-    maintenance_activation_registration_lock,
     maintenance_drain_lock,
-    read_activation_registration,
     read_records,
 )
-from teleclaude.core.integration.activation_registration import resolve_current_tip_activation_range
-from teleclaude.core.integration.daemon_window import WindowCloseResult, WindowOpenResult, close_window, open_window
 from teleclaude.core.integration.maintenance_trigger import (
     DRAIN_HELD_ENV,
     DRAIN_HELD_VALUE,
@@ -45,12 +40,9 @@ from teleclaude.core.integration.maintenance_trigger import (
     MaintenanceTrigger,
 )
 from teleclaude.core.integration.post_commit_maintenance import (
-    ActivationRefused,
     eligible_maintenance_root,
-    record_activation,
     replay_command,
     run_maintenance_waves,
-    start_drain_contender,
 )
 from teleclaude.core.project_state import resolve_owning_checkout
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, hook_free_environment
@@ -92,7 +84,6 @@ _DIRTY_OWNER_SEPARATOR = ", "
 _STEP_RUNNING = "{action_id}: running"
 _STEP_SUCCEEDED = "{action_id}: succeeded"
 _STEP_FAILED = "{action_id}: failed (exit code {exit_code})"
-_STEP_NOT_PERFORMED = "{action_id}: not performed (daemon did not reach a verified serving state)"
 _EARLIER_FAILURE = (
     "{action_id} failed in an earlier commit-boundary run ({after_sha}). Replay it for its original range with: "
     "{command}. The standing integrator owns that replay."
@@ -109,21 +100,7 @@ _NO_PROBE = "the action declares no probe"
 _PROBE_FAILED = "its probe exited with code {exit_code}"
 _PROBE_UNREACHABLE = "its probe could not run: {error}"
 _LISTED_PERFORMED = "{action_id}: perform"
-_LISTED_WINDOWED = "{action_id}: replace the daemon around the run"
-_LISTED_SERVING = "{action_id}: perform after the daemon's start"
 _LISTED_REPORTED = "{action_id}: report only (never performed on demand)"
-_WINDOW_OPENING = "daemon window: opening"
-_WINDOW_OPENED = "daemon window: opened"
-_WINDOW_REFUSED = "daemon window: refused ({reason})"
-_WINDOW_CLOSING_VERIFIED = "daemon window: closed and verified"
-_WINDOW_CLOSING_FAILED = "daemon window: start not verified ({reason})"
-_WINDOW_HANDOFF = "daemon window: handing activation {after_sha} to the commit-boundary drain"
-_WINDOW_DRAIN_LAUNCH_FAILED = "could not start the commit-boundary drain; recover with: telec repo maintenance drain"
-_WINDOW_HANDOFF_FAILED = "{handoff}; {launch_failure}"
-_WINDOW_TIP_REGISTRATION_REFUSED = "daemon window: refused to register checkout tip ({reason})"
-_WINDOW_REOPEN_FAILED = "daemon window: could not stop the daemon for activation {after_sha} ({reason})"
-_UNKNOWN_WINDOW_REFUSAL = "maintenance window opening was refused"
-_UNKNOWN_WINDOW_CLOSE = "maintenance window start was not verified"
 _SHORT_COMMIT_LENGTH = 12
 
 
@@ -137,20 +114,15 @@ class StepOutcome:
 
 @dataclass(frozen=True)
 class OnDemandRunResult:
-    """The outcome of one on-demand run, including a refused or unverified daemon window."""
+    """The outcome of one on-demand run, or the refusal that stopped it."""
 
     refusal: str | None = None
     steps: tuple[StepOutcome, ...] = ()
-    window_failure: str | None = None
 
     @property
     def exit_code(self) -> int:
-        """Non-zero exactly when the window refused or failed verification, or any step failed."""
-        if (
-            self.refusal is not None
-            or self.window_failure is not None
-            or any(step.exit_code != _SUCCEEDED for step in self.steps)
-        ):
+        """Non-zero exactly when the run was refused or any step failed."""
+        if self.refusal is not None or any(step.exit_code != _SUCCEEDED for step in self.steps):
             return _FAILED
         return _SUCCEEDED
 
@@ -193,10 +165,7 @@ class _RunContext:
     root: Path
     target: _Target
     activation: ActivationRange
-    window_required: bool
     performed: tuple[str, ...]
-    window_steps: tuple[str, ...]
-    serving_steps: tuple[str, ...]
     deferred: tuple[str, ...]
     child_env: dict[str, str]
     outcomes: list[StepOutcome]
@@ -214,29 +183,6 @@ class _ProbeAnswer:
     undetermined: str | None
 
 
-@dataclass(frozen=True)
-class _WindowTipState:
-    """New actionable commit work found at the on-demand window boundary."""
-
-    activation: ActivationRange | None = None
-    action_ids: tuple[str, ...] = ()
-    refusal: str | None = None
-
-    @property
-    def restart_owed(self) -> bool:
-        """Whether this newly actionable activation requires the daemon replacement window."""
-        return RESTART_MAINTENANCE_ACTION_ID in self.action_ids
-
-
-@dataclass(frozen=True)
-class _OnDemandWindowClose:
-    """The start result and any commit-boundary work found around it."""
-
-    tip_state: _WindowTipState
-    close_result: WindowCloseResult | None = None
-    reopened: WindowOpenResult | None = None
-
-
 class _Refused(Exception):
     """The invocation is not a location an on-demand run may act from."""
 
@@ -250,19 +196,8 @@ def run_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> On
 
     root = target.root
     activation = ActivationRange(before_sha=None, after_sha=target.tip)
-    window_required = RESTART_MAINTENANCE_ACTION_ID in target.maintenance
-    performed = tuple(
-        action_id
-        for action_id in _ordered(target.maintenance, OnDemandDisposition.RUN)
-        if action_id != RESTART_MAINTENANCE_ACTION_ID
-    )
-    window_steps = tuple(action_id for action_id in performed if not target.maintenance[action_id].runs_while_serving)
-    serving_steps = tuple(action_id for action_id in performed if target.maintenance[action_id].runs_while_serving)
-    deferred = tuple(
-        action_id
-        for action_id in _ordered(target.maintenance, OnDemandDisposition.DEFER)
-        if action_id != RESTART_MAINTENANCE_ACTION_ID
-    )
+    performed = _ordered(target.maintenance, OnDemandDisposition.RUN)
+    deferred = _ordered(target.maintenance, OnDemandDisposition.DEFER)
     dirty_count = _report_uncommitted_edits(root, emit)
     logger.info(
         _RUN_STARTED_EVENT,
@@ -297,10 +232,7 @@ def run_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> On
         root=root,
         target=target,
         activation=activation,
-        window_required=window_required,
         performed=performed,
-        window_steps=window_steps,
-        serving_steps=serving_steps,
         deferred=deferred,
         child_env=child_env,
         outcomes=outcomes,
@@ -310,9 +242,9 @@ def run_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> On
         fill=fill,
     )
     with maintenance_drain_lock(root, lambda: emit(_WAITING_FOR_LOCK)):
-        refusal, window_failure = _perform_on_demand_steps(context)
+        _perform_on_demand_steps(context)
 
-    result = OnDemandRunResult(refusal=refusal, steps=tuple(outcomes), window_failure=window_failure)
+    result = OnDemandRunResult(steps=tuple(outcomes))
     logger.info(
         _RUN_FINISHED_EVENT,
         project_root=str(root),
@@ -324,221 +256,23 @@ def run_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> On
     return result
 
 
-def _perform_on_demand_steps(context: _RunContext) -> tuple[str | None, str | None]:
-    """Run the declared steps under lock and return the window's refusal and failure, if any."""
+def _perform_on_demand_steps(context: _RunContext) -> None:
+    """Run the declared steps in order under the lock, then name earlier failures and what is still owed."""
     root = context.root
-    target = context.target
-    activation = context.activation
-    emit = context.emit
-    window_open = False
-    refusal: str | None = None
-    window_failure: str | None = None
-    serving_steps_ran = False
-    with maintenance_activation_registration_lock(root):
-        baseline_activation_shas = frozenset(
-            record.activation.after_sha
-            for record in read_records(root)
-            if isinstance(record.activation, ActivationRange)
-        )
-    if context.window_required:
-        emit(_WINDOW_OPENING)
-        opened = open_window(root, activation)
-        if not opened.opened:
-            refusal = opened.reason or _UNKNOWN_WINDOW_REFUSAL
-            emit(_WINDOW_REFUSED.format(reason=refusal))
-        else:
-            window_open = True
-            emit(_WINDOW_OPENED)
-    if refusal is None:
-        run_maintenance_waves(
-            root,
-            activation,
-            MaintenanceTrigger.ON_DEMAND,
-            context.window_steps if context.window_required else context.performed,
-            target.maintenance,
-            context.fill,
-            context.child_env,
-            context.start_step,
-            context.finish_step,
-            capture_output=False,
-        )
-        if window_open:
-            boundary = _close_on_demand_window(root, target.tip, baseline_activation_shas, activation)
-            if boundary.close_result is not None and boundary.close_result.verified:
-                emit(_WINDOW_CLOSING_VERIFIED)
-            elif boundary.close_result is not None:
-                window_failure = boundary.close_result.reason or _UNKNOWN_WINDOW_CLOSE
-                emit(_WINDOW_CLOSING_FAILED.format(reason=window_failure))
-            refusal, window_failure = _handle_on_demand_boundary(
-                root, target.tip, boundary, emit, refusal, window_failure
-            )
-            if _may_run_serving_steps(boundary, refusal):
-                run_maintenance_waves(
-                    root,
-                    activation,
-                    MaintenanceTrigger.ON_DEMAND,
-                    context.serving_steps,
-                    target.maintenance,
-                    context.fill,
-                    context.child_env,
-                    context.start_step,
-                    context.finish_step,
-                    capture_output=False,
-                )
-                serving_steps_ran = True
-    if context.window_required and not serving_steps_ran:
-        for action_id in context.serving_steps:
-            emit(_STEP_NOT_PERFORMED.format(action_id=action_id))
-    if refusal is None:
-        _report_earlier_failures(root, emit)
-        _report_owed(root, target, context.deferred, context.fill, context.child_env, emit)
-    return refusal, window_failure
-
-
-def _handle_on_demand_boundary(
-    root: Path,
-    fallback_tip: str,
-    boundary: _OnDemandWindowClose,
-    emit: Callable[[str], None],
-    refusal: str | None,
-    window_failure: str | None,
-) -> tuple[str | None, str | None]:
-    """Route overtaking activations to the commit-boundary drain after closing the on-demand window."""
-    tip_state = boundary.tip_state
-    if tip_state.refusal is not None:
-        refusal = tip_state.refusal
-        emit(_WINDOW_TIP_REGISTRATION_REFUSED.format(reason=refusal))
-        if boundary.reopened is not None:
-            if not boundary.reopened.opened:
-                window_failure = boundary.reopened.reason or _UNKNOWN_WINDOW_REFUSAL
-            start_drain_contender(root)
-    elif tip_state.restart_owed:
-        if boundary.reopened is not None and not boundary.reopened.opened:
-            window_failure = boundary.reopened.reason or _UNKNOWN_WINDOW_REFUSAL
-            refusal = _WINDOW_REOPEN_FAILED.format(
-                after_sha=tip_state.activation.after_sha if tip_state.activation else fallback_tip,
-                reason=window_failure,
-            )
-            start_drain_contender(root)
-        else:
-            refusal = _handoff_to_commit_boundary(root, tip_state, emit)
-    if tip_state.action_ids and not tip_state.restart_owed:
-        start_drain_contender(root)
-    return refusal, window_failure
-
-
-def _find_new_window_tip_state(root: Path, baseline_activation_shas: frozenset[str]) -> _WindowTipState:
-    """Return the first newly actionable commit activation and its resolved action set."""
-    records = read_records(root)
-    activation = next(
-        (
-            record.activation
-            for record in records
-            if isinstance(record.activation, ActivationRange)
-            and record.activation.after_sha not in baseline_activation_shas
-            and record.action_id == RESTART_MAINTENANCE_ACTION_ID
-            and record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
-        ),
-        None,
+    run_maintenance_waves(
+        root,
+        context.activation,
+        MaintenanceTrigger.ON_DEMAND,
+        context.performed,
+        context.target.maintenance,
+        context.fill,
+        context.child_env,
+        context.start_step,
+        context.finish_step,
+        capture_output=False,
     )
-    if activation is None:
-        activation = next(
-            (
-                record.activation
-                for record in records
-                if isinstance(record.activation, ActivationRange)
-                and record.activation.after_sha not in baseline_activation_shas
-                and record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
-            ),
-            None,
-        )
-    if activation is None:
-        return _WindowTipState()
-    action_ids = tuple(
-        record.action_id
-        for record in records
-        if record.activation == activation
-        and record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
-    )
-    return _WindowTipState(activation=activation, action_ids=action_ids)
-
-
-def _close_on_demand_window(
-    root: Path,
-    run_tip: str,
-    baseline_activation_shas: frozenset[str],
-    activation: ActivationRange,
-) -> _OnDemandWindowClose:
-    """Check registration on both sides of the start while excluding commit-boundary writers."""
-    close_result: WindowCloseResult | None = None
-    started = False
-    while True:
-        unregistered_tip: str | None = None
-        reopen_activation: ActivationRange | None = None
-        tip_state: _WindowTipState | None = None
-        with maintenance_activation_registration_lock(root):
-            current_tip = Repo(str(root)).head.commit.hexsha
-            if current_tip != run_tip and read_activation_registration(root, current_tip) is None:
-                unregistered_tip = current_tip
-            else:
-                tip_state = _find_new_window_tip_state(root, baseline_activation_shas)
-                if tip_state.restart_owed and not started:
-                    return _OnDemandWindowClose(tip_state=tip_state)
-                if started:
-                    if tip_state.restart_owed and tip_state.activation is not None:
-                        reopen_activation = tip_state.activation
-                    else:
-                        return _OnDemandWindowClose(tip_state, close_result)
-                else:
-                    close_result = close_window(
-                        root,
-                        current_tip,
-                        (activation,),
-                        current_tip=lambda: Repo(str(root)).head.commit.hexsha,
-                    )
-                    started = True
-                    continue
-
-        if reopen_activation is not None:
-            if tip_state is None:
-                continue
-            reopened = open_window(root, reopen_activation)
-            return _OnDemandWindowClose(tip_state, close_result, reopened)
-
-        activation_range = resolve_current_tip_activation_range(root, unregistered_tip)
-        recording = record_activation(root, activation_range)
-        if isinstance(recording, ActivationRefused):
-            tip_state = _WindowTipState(activation=activation_range, refusal=recording.detail)
-            if started:
-                reopened = open_window(root, activation_range)
-                return _OnDemandWindowClose(tip_state, close_result, reopened)
-            return _OnDemandWindowClose(tip_state)
-
-
-def _handoff_to_commit_boundary(root: Path, tip_state: _WindowTipState, emit: Callable[[str], None]) -> str:
-    """Leave a restart-owing activation for the drain and start its contender before releasing the lock."""
-    activation = tip_state.activation
-    if activation is None:
-        return _UNKNOWN_WINDOW_REFUSAL
-    handoff = _WINDOW_HANDOFF.format(after_sha=activation.after_sha[:_SHORT_COMMIT_LENGTH])
-    emit(handoff)
-    if start_drain_contender(root):
-        return handoff
-    failure = _WINDOW_DRAIN_LAUNCH_FAILED
-    emit(failure)
-    return _WINDOW_HANDOFF_FAILED.format(handoff=handoff, launch_failure=failure)
-
-
-def _may_run_serving_steps(boundary: _OnDemandWindowClose, refusal: str | None) -> bool:
-    """Allow serving-tolerant steps only after a verified, unreopened on-demand window."""
-    return (
-        boundary.close_result is not None
-        and boundary.close_result.verified
-        and boundary.reopened is None
-        and not boundary.tip_state.restart_owed
-        and boundary.tip_state.refusal is None
-        and refusal is None
-    )
+    _report_earlier_failures(root, context.emit)
+    _report_owed(root, context.target, context.deferred, context.fill, context.child_env, context.emit)
 
 
 def list_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> OnDemandListing:
@@ -550,24 +284,12 @@ def list_on_demand(invocation_directory: Path, emit: Callable[[str], None]) -> O
     steps = tuple(
         ListedStep(
             action_id=action_id,
-            performed=(
-                target.maintenance[action_id].on_demand is OnDemandDisposition.RUN
-                or action_id == RESTART_MAINTENANCE_ACTION_ID
-            ),
+            performed=target.maintenance[action_id].on_demand is OnDemandDisposition.RUN,
         )
         for action_id in _ordered(target.maintenance, None)
     )
     for step in steps:
-        if step.action_id == RESTART_MAINTENANCE_ACTION_ID:
-            emit(_LISTED_WINDOWED.format(action_id=step.action_id))
-        elif (
-            RESTART_MAINTENANCE_ACTION_ID in target.maintenance
-            and target.maintenance[step.action_id].runs_while_serving
-            and step.performed
-        ):
-            emit(_LISTED_SERVING.format(action_id=step.action_id))
-        else:
-            emit((_LISTED_PERFORMED if step.performed else _LISTED_REPORTED).format(action_id=step.action_id))
+        emit((_LISTED_PERFORMED if step.performed else _LISTED_REPORTED).format(action_id=step.action_id))
     return OnDemandListing(steps=steps)
 
 

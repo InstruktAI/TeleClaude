@@ -2072,11 +2072,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
         notes=[
             "Use it when commit-boundary maintenance did not run, or ran and left the root wrong: it performs every step the root's registry declares, in declared order, and reports each step's outcome as it completes.",
             "A failed step does not stop the later ones; the command exits non-zero when any step failed.",
-            "When a run owes daemon replacement, steps not declared safe while the daemon serves run while it is stopped; serving-tolerant steps run after startup is verified. Reloads and service deployment remain reported rather than performed.",
+            "Reloads and service deployment remain reported rather than performed.",
             "Uncommitted edits are named first, with the sessions holding them. Publication uses committed state only: main's tip, or the commit an installed beta or stable release checkout runs; the other steps read the checkout as it stands.",
             "Runs only from the canonical checkout on main, or from the installed release checkout of a beta or stable installation (detached at its release), in a directory holding its own teleclaude.yml; elsewhere it refuses and names where to run it.",
             "A step that an earlier commit-boundary run recorded as failed is named with its replay command; the standing integrator owns that replay.",
-            "With --list, it prints what each step will do and, when replacement is owed, distinguishes the stopped window from work after verified startup; the listing runs nothing.",
+            "With --list, it prints what each step will do; the listing runs nothing.",
         ],
         examples=["telec sync", "telec sync --list"],
         auth=CommandAuth(capability=Capability.CODE, human=_HR_MEMBER),
