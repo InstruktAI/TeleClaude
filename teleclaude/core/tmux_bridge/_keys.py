@@ -301,14 +301,6 @@ async def discard_shell_input(session_name: str) -> bool:
     try:
         if not await _leave_pane_mode(session_name=session_name, timeout=SUBPROCESS_TIMEOUT_QUICK):
             return False
-    except SubprocessTimeoutError as e:
-        logger.error(
-            "tmux input discard timed out",
-            session=session_name,
-            reason="timeout",
-            timeout_s=e.timeout,
-        )
-        return False
     except (OSError, ValueError, RuntimeError) as e:
         logger.exception(
             "tmux input discard subprocess error",
