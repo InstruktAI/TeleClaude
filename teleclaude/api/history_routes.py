@@ -8,7 +8,7 @@ from http import HTTPStatus
 from fastapi import APIRouter, Depends, HTTPException, Query
 from instrukt_ai_logging import get_logger
 
-from teleclaude.api.auth import CallerIdentity, caller_from_carried_identity, carried_caller
+from teleclaude.api.auth import CallerIdentity, caller_for_role_resolution, carried_caller
 from teleclaude.config.machine import config
 from teleclaude.constants import LOGIN_REQUIRED_DETAIL
 from teleclaude.core.runtime_events import publish_runtime_error
@@ -42,7 +42,7 @@ async def search_history(
     caller: CallerIdentity = Depends(carried_caller),
 ) -> HistorySearchPayload:
     """Search this computer's history mirrors within the caller's reach."""
-    resolved_caller = caller_from_carried_identity(caller)
+    resolved_caller = await asyncio.to_thread(caller_for_role_resolution, caller)
     if not history_caller_is_identified(resolved_caller):
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
 
@@ -76,7 +76,7 @@ async def show_history(
     caller: CallerIdentity = Depends(carried_caller),
 ) -> HistoryDetailPayload:
     """Resolve and return one history detail within the caller's reach."""
-    resolved_caller = caller_from_carried_identity(caller)
+    resolved_caller = await asyncio.to_thread(caller_for_role_resolution, caller)
     if not history_caller_is_identified(resolved_caller):
         raise HTTPException(status_code=403, detail=LOGIN_REQUIRED_DETAIL)
     try:
