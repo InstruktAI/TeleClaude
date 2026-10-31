@@ -9,6 +9,7 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -25,6 +26,7 @@ from teleclaude.core.agent_startup_delivery import (
 from teleclaude.core.agents import _get_agent_config
 from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.db import db
+from teleclaude.core.degradation import DegradedComponent
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.events import (
     AgentEventContext,
@@ -66,6 +68,7 @@ from teleclaude.core.shutdown_drain import get_shutdown_drain
 from teleclaude.core.tmux_bridge import input_effect_scope
 from teleclaude.core.tmux_io import UserTurnDeliveryOutcome
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.core.workflow_store.store_refusal import STORE_REFUSALS, describe_store_refusal
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.envelope_facts import home_for_session_config
 from teleclaude.events.producer import publish_event
@@ -82,6 +85,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.agent_coordinator import AgentCoordinator
     from teleclaude.core.command_service import CommandService
+    from teleclaude.core.degradation import DegradationRecord
     from teleclaude.core.hook_outbox_queue import HookOutboxSessionQueue
     from teleclaude.core.output_poller import OutputPoller
 
@@ -131,6 +135,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         _session_outbox_workers: dict[str, asyncio.Task[None]]
         _hook_outbox_claim_paused_sessions: set[str]
         client: AdapterClient
+        degradations: DegradationRecord
         agent_coordinator: AgentCoordinator
         command_service: CommandService
         output_poller: OutputPoller
@@ -209,14 +214,45 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 logger.error("Workflow active_runner clear failed for session %s: %s", session_id, exc, exc_info=True)
 
     async def _recover_session_housekeeping(self) -> None:
-        """Recover resident terminal resources and workflow references from their owners."""
+        """Recover resident terminal resources and workflow references from their owners.
+
+        Each project's driver ownership is reconciled independently; one project's failure leaves only
+        that project unreconciled.
+        """
         identities = set(self._session_outbox_queues) | set(self._session_outbox_workers)
         identities.update(self._hook_outbox_claim_paused_sessions)
         for session_id in sorted(identities):
             await self._handle_session_closed(session_id)
         for project in get_project_catalog_service().list_projects():
             if is_project_checkout(project.root):
-                await reconcile_terminal_driver_ownership(db, str(project.root))
+                await self._reconcile_project_driver_ownership(str(project.root))
+
+    async def _reconcile_project_driver_ownership(self, project_root: str) -> None:
+        """Reconcile one project's terminal driver ownership; its failure leaves that project alone unreconciled.
+
+        Each project is an independent unit of the housekeeping sweep, so a refused or failing workflow
+        store never withholds recovery from the other projects. A store refusal degrades the project's
+        workflow store and is logged when that mark starts or changes; any other failure is logged and
+        leaves the degradation record to the project listing.
+        """
+        try:
+            await reconcile_terminal_driver_ownership(db, project_root)
+        except STORE_REFUSALS as refused:
+            door = describe_store_refusal(refused, Path(project_root))
+            if self.degradations.mark(DegradedComponent.WORKFLOW_STORE, door, subject=project_root):
+                logger.error(
+                    "Project workflow store refused; its terminal driver ownership is left unreconciled",
+                    project_root=project_root,
+                    reason=str(refused),
+                    door=door,
+                    exc_info=True,
+                )
+        except Exception:
+            logger.error(
+                "Terminal driver ownership reconciliation failed; the project is left unreconciled",
+                project_root=project_root,
+                exc_info=True,
+            )
 
     async def _handle_system_command_direct(self, context: SystemCommandContext) -> None:
         """Handle system commands routed directly to the runtime owner.
