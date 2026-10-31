@@ -6,6 +6,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from enum import StrEnum
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
@@ -135,15 +136,24 @@ _EVENT_PLATFORM_ATTACH_TASK_NAME = "event-platform-attach"
 _EVENT_PLATFORM_ATTACH_FAILED_EVENT = "event_platform_attach_failed"
 _EVENT_PLATFORM_ATTACH_END_REASON = "event-platform-attach-failed"
 _EVENT_PLATFORM_ATTACH_STALLED_ERROR = "Event platform steps remain while every event Redis answers"
-_EVENT_PLATFORM_BLOCKED_PROGRESS = "blocked_redis_unreachable"
 _EVENT_PLATFORM_DEGRADED_EVENT = "event_platform_redis_unreachable: startup continues degraded"
+
+
+class _RecoveryProgress(StrEnum):
+    """How far the event platform's reader recovery has come."""
+
+    NOT_STARTED = "not_started"
+    POSITIONS_PREPARING = "reader_positions_preparing"
+    POSITIONS_PREPARED = "reader_positions_prepared"
+    BLOCKED_REDIS_UNREACHABLE = "blocked_redis_unreachable"
+    PROCESSOR_STARTED = "processor_started"
 
 
 @dataclass
 class _EventPlatformStatus:
     redis_configured: bool
     redis_reachable: bool | None = None
-    pending_recovery_progress: str = "not_started"
+    pending_recovery_progress: _RecoveryProgress = _RecoveryProgress.NOT_STARTED
 
 
 @dataclass
@@ -467,7 +477,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     def _note_event_platform_attached(self) -> None:
         self._event_platform_status.redis_reachable = True
-        self._event_platform_status.pending_recovery_progress = "processor_started"
+        self._event_platform_status.pending_recovery_progress = _RecoveryProgress.PROCESSOR_STARTED
         logger.info(
             "event_platform_redis_available: pending recovery scheduled",
             redis_configured=self._event_platform_status.redis_configured,
@@ -622,7 +632,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         self._event_platform_steps = _EventPlatformSteps()
         await self._init_event_db_storage()
         event_catalog = build_default_catalog()
-        self._event_platform_status.pending_recovery_progress = "reader_positions_preparing"
+        self._event_platform_status.pending_recovery_progress = _RecoveryProgress.POSITIONS_PREPARING
         redis_clients = await self._open_event_redis_client()
         event_producer = self._configure_event_producer(redis_clients)
         self._event_catalog = event_catalog
@@ -637,7 +647,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         unanswering = self._reachability().unanswering_scopes()
         if unanswering:
             self._event_platform_status.redis_reachable = False
-            self._event_platform_status.pending_recovery_progress = _EVENT_PLATFORM_BLOCKED_PROGRESS
+            self._event_platform_status.pending_recovery_progress = _RecoveryProgress.BLOCKED_REDIS_UNREACHABLE
             logger.warning(
                 _EVENT_PLATFORM_DEGRADED_EVENT,
                 scopes=[scope.value for scope in unanswering],
@@ -645,7 +655,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             )
             return
         self._event_platform_status.redis_reachable = True
-        self._event_platform_status.pending_recovery_progress = "reader_positions_prepared"
+        self._event_platform_status.pending_recovery_progress = _RecoveryProgress.POSITIONS_PREPARED
 
     async def _end_for_memory_transition(self, session_id: str) -> bool:
         """End a pre-transition conversation-memory worker through agent runtime's termination flow."""
