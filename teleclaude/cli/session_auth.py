@@ -31,7 +31,9 @@ from teleclaude.caller_identity import (
     human_principal_for_email,
     identity_for_session,
     is_desk_visitor,
+    is_operator_principal,
     is_roleless_platform_caller,
+    local_caller_principal,
     person_entry_for_email,
     session_act_exception,
 )
@@ -63,7 +65,6 @@ logger = get_logger(__name__)
 SESSION_AUTH_DIR = _PATHS_SESSION_AUTH_DIR
 TUI_CARRIED_IDENTITY_ENV_KEY = "TELEC_TUI_IDENTITY"
 _OUTSIDE_AGENT_RESOLVED_EVENT = "outside_agent_resolved_to_headless_session"
-_OPERATOR_RESOLVED_EVENT = "unidentified_local_caller_resolved_to_operator"
 _NO_TERMINAL_ERROR = "No terminal detected: telec auth login must run from an interactive terminal."
 _DEVICE_ALLOCATION_KEY = "device_allocation"
 _DARWIN_PLATFORM = "darwin"
@@ -331,7 +332,7 @@ def _no_identity(in_session: bool) -> ResolvedCliIdentity:
 def _operator_identity() -> ResolvedCliIdentity:
     """The computer's operator: a caller outside any session that nothing else identifies."""
     entry_point = _entry_point_for_caller(in_session=False)
-    logger.debug(_OPERATOR_RESOLVED_EVENT, entry_point=entry_point)
+    logger.debug("unidentified_local_caller_resolved_to_operator", entry_point=entry_point)
     return ResolvedCliIdentity(
         caller=SystemCliCaller(),
         principal=SYSTEM_OPERATOR_PRINCIPAL,
@@ -363,9 +364,10 @@ def resolve_cli_identity() -> ResolvedCliIdentity:
         if outside_agent_session_id is not None:
             return _resolve_session_identity(outside_agent_session_id)
         email = read_current_session_email()
-        if not email:
+        principal = local_caller_principal(email)
+        if is_operator_principal(principal):
             return _operator_identity()
-        person = person_entry_for_email(email)
+        person = person_entry_for_email(email) if email and principal else None
         if person is None:
             return _no_identity(False)
         caller = PersonCliCaller(

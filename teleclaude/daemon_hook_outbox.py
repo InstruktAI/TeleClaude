@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from instrukt_ai_logging import get_logger
 from pydantic import JsonValue
 
+from teleclaude.caller_identity import is_operator_principal, local_caller_principal
 from teleclaude.config.machine import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER, HeadlessBootstrapField
 from teleclaude.core import polling_coordinator
@@ -60,7 +61,6 @@ _HOOK_OUTBOX_BATCH_FAILED_MESSAGE = "Hook outbox batch failed; retrying after th
 _HOOK_OUTBOX_ROW_FAILED_MESSAGE = "Hook outbox row processing failed; continuing with the next row"
 _HEADLESS_BOOTSTRAP_AUTHORITY_ABSENT = "Ignoring headless session bootstrap without receiver authorization"
 _RUNTIME_HOOK_RUN_MISMATCH_EVENT = "Ignoring hook event from a superseded launch"
-_HEADLESS_OPERATOR_BOOTSTRAP_EVENT = "headless_session_bootstrapped_under_operator"
 # Headless hook events carry no mode; the launch intent requires one, and "med"
 # is the platform's standard mode.
 _HEADLESS_DEFAULT_THINKING_MODE = "med"
@@ -395,10 +395,10 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         identity = (
             get_identity_resolver().resolve(InputOrigin.TERMINAL.value, origin_metadata) if origin_metadata else None
         )
-        operator = not caller_email
+        operator = is_operator_principal(local_caller_principal(caller_email))
         if operator:
             logger.info(
-                _HEADLESS_OPERATOR_BOOTSTRAP_EVENT,
+                "headless_session_bootstrapped_under_operator",
                 session_id=session_id,
                 native_session_id=native_session_id or "",
                 project_path=project_path or "",

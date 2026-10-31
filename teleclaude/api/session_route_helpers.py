@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api.auth import CallerIdentity, principal_for_carried_caller
+from teleclaude.caller_identity import is_operator_principal
 from teleclaude.config.machine import config
 from teleclaude.core.command_dispatch import RelayFailure, RemoteDispatchReason, dispatch_command, is_remote_target
 from teleclaude.core.conversation_messages import (
@@ -25,7 +26,7 @@ from teleclaude.core.injected_text import CALLER_CATEGORY_PART_SEPARATOR, Machin
 from teleclaude.core.models import JsonDict, JsonValue, MessageAuthor, MessageMetadata
 from teleclaude.core.operation_caller_identity import get_relayed_caller
 from teleclaude.core.operations.service import SerializedOperation
-from teleclaude.types.commands import InternalCommand
+from teleclaude.types.commands import CreateSessionCommand, InternalCommand
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -150,7 +151,13 @@ async def dispatch_caller_command(
     command: InternalCommand,
     identity: CallerIdentity,
 ) -> JsonValue | None:
-    """Dispatch a caller's command with the verified principal required by remote targets."""
+    """Dispatch a caller's command with the verified principal required by remote targets.
+
+    A session the computer's operator creates runs under the operator; the flag comes from the
+    carried principal, never from the request.
+    """
+    if isinstance(command, CreateSessionCommand):
+        command.operator = is_operator_principal(identity.principal)
     principal = principal_for_carried_caller(
         identity,
         required=is_remote_target(command.computer, config.computer.name),
