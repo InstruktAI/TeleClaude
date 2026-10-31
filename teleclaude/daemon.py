@@ -4,6 +4,7 @@ import asyncio
 import atexit
 import fcntl
 import hashlib
+import logging
 import os
 import signal
 import sys
@@ -12,7 +13,7 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO
+from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -159,6 +160,7 @@ _record_import_timing("teleclaude.core.command_service", _t)
 
 _t = time.perf_counter()
 from teleclaude.core.db import db
+from teleclaude.core.degradation import DegradedComponent, get_degradations
 
 _record_import_timing("teleclaude.core.db", _t)
 
@@ -1077,12 +1079,19 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             raise
 
     async def _apply_chiptunes_startup_state(self) -> None:
-        """Apply chiptunes config after the event loop is running, awaiting the registry writes off-loop."""
+        """Apply chiptunes config after the event loop is running, awaiting the registry writes off-loop.
+
+        Chiptunes is optional: a failure here degrades it and startup continues without music.
+        """
         if not hasattr(self, "chiptunes_manager"):
             return
-        await self.chiptunes_manager.reload()
-        if self.chiptunes_manager.enabled:
-            await self.chiptunes_manager.reattach()
+        try:
+            await self.chiptunes_manager.reload()
+            if self.chiptunes_manager.enabled:
+                await self.chiptunes_manager.reattach()
+        except Exception as exc:
+            logger.error("Chiptunes startup failed; the daemon continues without it", exc_info=True)
+            get_degradations().mark(DegradedComponent.CHIPTUNES, str(exc))
 
     async def _settle_accepted_work(self) -> None:
         """Close admission and wait, within the preparation window, for accepted work to settle.
@@ -1372,6 +1381,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.tts_manager.reload()
         if "chiptunes" in changed:
             await self.chiptunes_manager.reload()
+            get_degradations().clear(DegradedComponent.CHIPTUNES)
             from teleclaude.api import chiptunes_routes  # startup boundary
 
             self._broadcast_chiptunes_state(await asyncio.to_thread(chiptunes_routes.current_track_preferences))
@@ -1687,6 +1697,7 @@ async def main() -> None:
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
+    exit_status = 0
     try:
         # Acquire lock to prevent multiple instances (non-retryable)
         daemon._acquire_lock()
@@ -1700,7 +1711,8 @@ async def main() -> None:
                 # Non-retryable errors fail immediately
                 if not _is_retryable_startup_error(e):
                     logger.error("Daemon startup failed (non-retryable): %s", e, exc_info=True)
-                    sys.exit(1)
+                    exit_status = 1
+                    return
 
                 # Last attempt exhausted
                 if attempt == STARTUP_MAX_RETRIES - 1:
@@ -1710,7 +1722,8 @@ async def main() -> None:
                         e,
                         exc_info=True,
                     )
-                    sys.exit(1)
+                    exit_status = 1
+                    return
 
                 # Retry with exponential backoff
                 delay = STARTUP_RETRY_DELAYS[attempt]
@@ -1728,12 +1741,12 @@ async def main() -> None:
 
     except DaemonLockError as e:
         logger.error(str(e))
-        sys.exit(1)
+        exit_status = 1
     except KeyboardInterrupt:
         logger.info("Received interrupt signal...")
     except Exception as e:
         logger.error("Unexpected error: %s", e, exc_info=True)
-        sys.exit(1)
+        exit_status = 1
     finally:
         try:
             await daemon.stop()
@@ -1741,6 +1754,19 @@ async def main() -> None:
             logger.error("Error during daemon stop: %s", e)
         finally:
             daemon._release_lock()
+            if exit_status:
+                _end_failed_process(exit_status)
+
+
+def _end_failed_process(exit_status: int) -> NoReturn:
+    """End a daemon that failed fatally, once its stop has run, so its service manager sees the exit.
+
+    An ordinary interpreter exit waits for every worker thread, and one blocked thread would keep a
+    daemon without its request surface alive indefinitely, invisible to the service manager.
+    """
+    logger.error("Daemon exiting with status %d after a fatal failure", exit_status)
+    logging.shutdown()
+    os._exit(exit_status)
 
 
 if __name__ == "__main__":

@@ -81,7 +81,7 @@ from teleclaude.api_models import (
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
-from teleclaude.api_models_health import HealthDTO, PreparationObservationDTO
+from teleclaude.api_models_health import DegradationDTO, HealthDTO, PreparationObservationDTO
 from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, SessionOf, authorizing_role
@@ -92,6 +92,7 @@ from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.configuration_clearance import standing_for_caller
 from teleclaude.core.db import db
+from teleclaude.core.degradation import get_degradations
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.events import (
     AgentHookEvents,
@@ -530,19 +531,25 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         async def health(request: Request) -> HealthDTO:  # pyright: ignore
             """Health check endpoint, carrying the commit the daemon's code stood on at its start.
 
-            The preparation observation and the configuration migration reach ride only on the
-            local API socket: the TCP webhook listener shares this app and has a bound port in
-            its server address.
+            The preparation observation, the configuration migration reach and the degraded
+            components ride only on the local API socket: the TCP webhook listener shares this
+            app and has a bound port in its server address.
             """
             server = request.scope.get("server")
             over_tcp = server is not None and server[1] is not None
             preparation = (
                 None if over_tcp else PreparationObservationDTO.from_observation(get_shutdown_drain().observation())
             )
+            degraded = (
+                None
+                if over_tcp
+                else tuple(DegradationDTO.from_degradation(entry) for entry in get_degradations().snapshot())
+            )
             return HealthDTO(
                 start_commit=self._start_commit,
                 preparation=preparation,
                 config_migration_reach=None if over_tcp else CURRENT_SCHEMA_VERSION,
+                degraded=degraded,
             )
 
         @self.app.get("/auth/whoami")

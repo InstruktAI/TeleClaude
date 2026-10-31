@@ -10,7 +10,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude import __version__
 from teleclaude.agent_registry import LaunchProfile
-from teleclaude.api_models import TodoDTO
 from teleclaude.config.machine import config
 from teleclaude.config.subject_resolution import SubjectResolutionError, resolve_config_subject
 from teleclaude.config_subjects import ConfigSubjectKind, SubjectRef
@@ -45,7 +44,6 @@ from teleclaude.core.models import (
     ENDPOINT_SECTION,
     ComputerInfo,
     JsonDict,
-    ProjectInfo,
     Session,
     SessionLaunchKind,
     SessionSnapshot,
@@ -66,13 +64,9 @@ from teleclaude.core.session_listing import SessionListingSelection
 from teleclaude.core.session_snapshot import project_session_snapshot
 from teleclaude.core.session_title import compose_command_session_title
 from teleclaude.core.session_utils import WorkingDirectoryUnavailableError, resolve_working_dir
-from teleclaude.core.todo import assemble_todo_from_db, recently_delivered_cutoff
 from teleclaude.core.workflow_store.store import get_workflow_store
-from teleclaude.events.envelope import EventHomeMarker
 from teleclaude.events.home_owner import EventHomeOwnerMarker
 from teleclaude.events.schemas.system import RuntimeSessionChange
-from teleclaude.project_root import is_project_checkout
-from teleclaude.services.project_catalog import get_project_catalog_service
 from teleclaude.services.project_catalog.ownership import load_project_ownership_index
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand
@@ -87,6 +81,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
 _UNBOUND_TMUX_NAME = ""
 _NO_TITLE_ARGUMENTS = ""
 _NO_ASSIGNMENT_TITLE = ""
@@ -545,71 +540,6 @@ async def list_sessions(*, selection: SessionListingSelection) -> list[SessionSn
         if not snapshot.status:
             snapshot.status = "active"
     return snapshots
-
-
-async def list_projects() -> list[ProjectInfo]:
-    """List every present session-placement entry in registry order.
-
-    Ephemeral request/response - no DB session required.
-
-    Returns:
-        List of project info objects.
-    """
-    catalog = get_project_catalog_service()
-    catalog.refresh()
-    return [
-        ProjectInfo(
-            name=entry.display_name,
-            description=entry.description,
-            path=str(entry.root),
-            subject=(
-                SubjectRef(ConfigSubjectKind(entry.kind.value), entry.identity).to_token()
-                if entry.identity is not None
-                else EventHomeMarker.UNKNOWN.value
-            ),
-            owner=entry.owner,
-        )
-        for entry in catalog.list_entries()
-    ]
-
-
-async def list_projects_with_todos() -> list[ProjectInfo]:
-    """List projects with their todos included (local only)."""
-    raw_projects = await list_projects()
-    projects_with_todos: list[ProjectInfo] = []
-
-    for project in raw_projects:
-        todos: list[TodoDTO] = []
-        if project.path and is_project_checkout(project.path):
-            todos = await list_todos(project.path)
-
-        project.todos = todos
-        projects_with_todos.append(project)
-
-    return projects_with_todos
-
-
-async def list_todos(project_path: str) -> list[TodoDTO]:
-    """List todos for a project.
-
-    Runs the synchronous todo assembly on a worker so store resolution cannot
-    block the daemon event loop. Ephemeral request/response - no DB session
-    required.
-
-    Args:
-        project_path: Absolute path to project directory
-
-    Returns:
-        List of todo objects.
-    """
-    return await asyncio.to_thread(
-        assemble_todo_from_db,
-        project_path,
-        include_icebox=True,
-        include_delivered=True,
-        delivered_since=recently_delivered_cutoff(),
-        include_removed=True,
-    )
 
 
 async def get_computer_info() -> ComputerInfo:
