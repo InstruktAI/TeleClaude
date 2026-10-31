@@ -20,6 +20,7 @@ from teleclaude.core.todos_db._github_artifacts import (
     ArtifactFact,
     clear_republication_item,
     issue_artifacts_fact,
+    keep_acknowledged_versions,
     queue_artifact_deletion,
     republication_pending,
     republication_progress,
@@ -297,6 +298,7 @@ class GitHubWorkflowPush:
             )
             save_committed_artifacts(session, item_id, committed_artifacts(committed_revision))
             if session.info.get(REPUBLICATION_FINALIZING_KEY) == item_id:
+                keep_acknowledged_versions(session, item_id)
                 clear_republication_item(session, item_id)
         if ledger_comment_id is not None:
             for table, row_id in changes.project_records:
@@ -474,6 +476,7 @@ class GitHubWorkflowPush:
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
             record = records.get(name)
             artifact = None
+            recreated = False
             if record is not None and record.present:
                 try:
                     artifact = _io_call(
@@ -482,11 +485,12 @@ class GitHubWorkflowPush:
                 except GitHubIORefused as refused:
                     if refused.reason is not GitHubIOFailure.NOT_FOUND:
                         raise
+                    recreated = True
             if artifact is None:
                 artifact = _io_call(
                     session, self.io, GitHubOperation.CREATE_ARTIFACT, issue_number, artifact_type(name), name, content
                 )
-            records[name] = append_entry(record, artifact.number, version)
+            records[name] = append_entry(record, artifact.number, version, recreated=recreated)
         if snapshot.versions and issue_artifacts_fact(session) is not ArtifactFact.SERVED:
             save_issue_artifacts_fact(session, ArtifactFact.SERVED)
         return records
@@ -505,7 +509,13 @@ class GitHubWorkflowPush:
             progress = saved.get(version_id) if version_id is not None else None
             if name is None or progress is None or progress.name != name:
                 raise GitHubIORefused(GitHubIOFailure.VALIDATION_REFUSED)
-            records[name] = append_entry(records.get(name), progress.artifact_number, version)
+            named = records.get(name)
+            records[name] = append_entry(
+                named,
+                progress.artifact_number,
+                version,
+                recreated=named is not None and named.artifact_number != progress.artifact_number,
+            )
         return records
 
     def _discover_ledger(self, session: Session, cached_issue_number: int | None) -> int | None:

@@ -36,6 +36,7 @@ __all__ = [
     "foreign_pending_items",
     "initialize_artifact_bookkeeping",
     "issue_artifacts_fact",
+    "keep_acknowledged_versions",
     "keep_hydrated_version",
     "local_republication_pending",
     "mark_foreign_pending",
@@ -158,6 +159,13 @@ class _Sql(StrEnum):
     LOCAL_PENDING = "SELECT 1 FROM github_republication_pending WHERE local_content = 1 LIMIT 1"
     FOREIGN_PENDING = (
         "INSERT OR IGNORE INTO github_republication_pending(item_id, requested, local_content) VALUES (:item_id, 0, 0)"
+    )
+    KEEP_ACKNOWLEDGED = (
+        "INSERT OR IGNORE INTO github_artifact_entry(item_id, name, ordinal, digest, updated_by, created_at, version_id) "
+        "SELECT p.item_id, p.name, -p.version_id, p.digest, v.updated_by, v.created_at, p.version_id "
+        "FROM github_republication_progress AS p JOIN todo_artifact_versions AS v "
+        "ON v.version_id = p.version_id AND v.id = p.item_id WHERE p.item_id = :item_id AND NOT EXISTS ("
+        "SELECT 1 FROM github_artifact_entry AS e WHERE e.item_id = p.item_id AND e.version_id = p.version_id)"
     )
     ENTRY_LINKED = (
         "SELECT version_id FROM github_artifact_entry WHERE item_id = :item_id AND name = :name AND ordinal = :ordinal "
@@ -354,6 +362,16 @@ def republication_order(session: Session) -> tuple[str, ...]:
 def mark_republication_requested(session: Session, item_id: str) -> None:
     """Record that a write to the item was refused, moving it to the front of republication."""
     session.execute(text(_Sql.REQUESTED), {_Field.ITEM_ID: item_id})
+
+
+def keep_acknowledged_versions(session: Session, item_id: str) -> None:
+    """Keep the link of every version a republication saved that the committed record does not name.
+
+    A version saved at an address that was later replaced is no longer served, so the record leaves it out; the
+    copy still holds it as saved. Its link carries a negative ordinal, which no record entry can have, and keeps
+    a later write from saving it again as new.
+    """
+    session.execute(text(_Sql.KEEP_ACKNOWLEDGED), {_Field.ITEM_ID: item_id})
 
 
 def clear_republication_item(session: Session, item_id: str) -> None:
