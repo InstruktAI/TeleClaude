@@ -8,8 +8,7 @@ caller acts only on a successful outcome. A window that expires on an instance t
 completes its own shutdown is a deferral, not a failure: the draining daemon finishes
 the restart once its accepted work settles.
 
-The read-only `status` verb reports the same observation for `make status`, and the read-only
-`degraded` verb the optional components the daemon serves without.
+The read-only `status` verb reports the same observation for `make status`.
 
 Maintenance callers that must not store configuration documents past what the running daemon reads
 ask `read_migration_reach` for the migration reach the daemon reports.
@@ -32,7 +31,7 @@ import sqlite3
 import stat
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum, StrEnum
@@ -166,11 +165,14 @@ class _UnixSocketConnection(http.client.HTTPConnection):
         self.sock.connect(self._socket_path)
 
 
-def read_health(socket_path: str) -> HealthObservation:
-    """Read and validate the daemon's health answer; any malformed answer is unreadable."""
+def read_health(socket_path: str, headers: Mapping[str, str] | None = None) -> HealthObservation:
+    """Read and validate the daemon's health answer; any malformed answer is unreadable.
+
+    `headers` carry the caller's identity when the answer depends on it, as its degraded projects do.
+    """
     connection = _UnixSocketConnection(socket_path, _HEALTH_TIMEOUT_S)
     try:
-        connection.request("GET", _HEALTH_PATH)
+        connection.request("GET", _HEALTH_PATH, headers=dict(headers or {}))
         response = connection.getresponse()
         body = response.read()
         status = response.status
@@ -336,16 +338,6 @@ def report_admission(socket_path: str) -> int:
     return int(ControlOutcome.ADMISSION_CLOSED)
 
 
-def report_degraded(socket_path: str) -> int:
-    """Print each optional component the daemon serves without; exit OK only when there is none."""
-    degraded = read_health(socket_path).degraded
-    if degraded is None:
-        raise ControlRefusal(ControlOutcome.UNSUPPORTED)
-    for line in degraded:
-        print(line)
-    return int(ControlOutcome.DEGRADED) if degraded else int(ControlOutcome.OK)
-
-
 def quiesce_legacy(socket_path: str, manager_pid: int, pid_file: str | None) -> int:
     """Return the pid of the positively identified legacy daemon whose durable work is quiescent."""
     pid = _identify_legacy(socket_path, manager_pid, pid_file)
@@ -409,7 +401,6 @@ class _Verb(StrEnum):
     PREPARE = "prepare"
     LEGACY = "legacy"
     STATUS = "status"
-    DEGRADED = "degraded"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -420,13 +411,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--manager-pid", type=int)
     parser.add_argument("--pid-file")
     args = parser.parse_args(argv)
-    if args.verb not in (_Verb.STATUS, _Verb.DEGRADED) and args.manager_pid is None:
+    if args.verb != _Verb.STATUS and args.manager_pid is None:
         parser.error(_MANAGER_PID_REQUIRED.format(verb=args.verb))
     try:
         if args.verb == _Verb.STATUS:
             return report_admission(args.socket)
-        if args.verb == _Verb.DEGRADED:
-            return report_degraded(args.socket)
         if args.verb == _Verb.PREPARE:
             pid = prepare(args.socket, args.manager_pid)
         else:

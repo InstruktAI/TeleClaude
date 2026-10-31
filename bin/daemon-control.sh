@@ -738,8 +738,8 @@ report_degraded_components() {
     if [ ! -x "$DAEMON_CONTROL_PYTHON" ]; then
         return 1
     fi
-    output="$(PYTHONPATH="$PROJECT_ROOT" "$DAEMON_CONTROL_PYTHON" -m teleclaude.runtime.daemon_shutdown_control \
-        degraded --socket "$API_SOCKET" 2>&1)" || rc=$?
+    output="$(PYTHONPATH="$PROJECT_ROOT" "$DAEMON_CONTROL_PYTHON" -m teleclaude.runtime.daemon_degraded_status \
+        --socket "$API_SOCKET" 2>&1)" || rc=$?
     case "$rc" in
         0)
             log_info "Optional components: OK"
