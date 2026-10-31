@@ -262,7 +262,7 @@ And the same holds for a project that subscribes neither code nor docs
 #### UC-RPC20: An operator's documentation stays in place when another git operation blocks its refresh
 
 ```gherkin
-Given an operator has a docs-enabled project whose checked-out documentation still holds unexpanded references to their TeleClaude home
+Given an operator has a docs-enabled project whose unmodified checked-out documentation still holds unexpanded references to their TeleClaude home
 And another git operation holds the project's index
 When TeleClaude converges the project's plumbing
 Then that documentation stays in the operator's working tree with its committed content
