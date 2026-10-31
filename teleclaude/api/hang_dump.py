@@ -174,7 +174,7 @@ def _capture_tasks(overdue_ids: frozenset[int]) -> tuple[TaskChain, ...]:
         chains.append(
             TaskChain(
                 name=task.get_name(),
-                coroutine=getattr(coro, "__qualname__", type(coro).__qualname__),
+                coroutine=coro.__qualname__ if isinstance(coro, types.CoroutineType) else type(coro).__qualname__,
                 request_id=request_id if request_id in overdue_ids else None,
                 frames=frames,
                 awaiting=awaiting,
