@@ -10,7 +10,8 @@ Codex CLI exposes a native hook surface that runs local commands at lifecycle
 events. Hooks receive JSON on stdin and may produce JSON or text on stdout to
 influence Codex's next action.
 
-Eleven native hook events are supported upstream:
+Codex 0.166.0 (`HookEventName` in `codex-rs/protocol/src/protocol.rs`) supports
+fourteen native hook events:
 
 - `SessionStart`
 - `SessionEnd`
@@ -23,6 +24,9 @@ Eleven native hook events are supported upstream:
 - `PostCompact`
 - `SubagentStop`
 - `Stop`
+- `Interrupt`
+- `PreModelRequest` (since 0.164.0)
+- `PostModelRequest` (since 0.164.0)
 
 ## Configuration
 
@@ -210,10 +214,40 @@ presence is the success signal. `apply_patch` is reported with `tool_name`
 }
 ```
 
-`Stop` is the only terminal event; no failure event exists upstream. A turn
-that dies before reaching `Stop` (a provider error, a killed process) emits
-nothing, so the only upstream signal is the absence of `Stop` while the session
-is still in a turn.
+`Stop` is the only terminal turn event; no failure counterpart exists in
+`HookEventName`. In Codex 0.166.0 a turn that ends on an error does not run the
+stop hooks: the error branches in `codex-rs/core/src/session/turn.rs` call
+`emit_turn_error_lifecycle`, send an `Error` event and leave the turn loop,
+while `run_turn_stop_hooks` runs only on the successful no-follow-up path. Such
+a turn fires no `Stop`, no `Interrupt` and no legacy `notify`
+(`agent-turn-complete`); upstream tracks this as open bug
+[`openai/codex#54884`](https://github.com/openai/codex/issues/54884), reproduced
+on 0.163.0. The Codex TUI itself shows the error and emits
+`OSC 7501;state=idle:app=codex`. A killed process also emits nothing.
+
+`Interrupt` adds `turn_id` and `permission_mode`. Upstream discussion
+(`openai/codex#45977`) describes it as covering an Esc interrupt; its trigger
+points are not verified here.
+
+`PreModelRequest` and `PostModelRequest` are observation-only: their output
+cannot veto a request or alter model context
+([`openai/codex#55144`](https://github.com/openai/codex/pull/55144)). Both fire
+around every model request attempt, retries included, and add `turn_id` and,
+for a subagent, `agent_id` and `agent_type`. `PostModelRequest` also carries:
+
+```json
+{
+  "status": "completed | failed | cancelled",
+  "error": "string | null",
+  "token_usage": "{input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_output_tokens, total_tokens} | null"
+}
+```
+
+A provider error therefore surfaces as `PostModelRequest` with
+`status: "failed"` and the error text. Because a retried attempt fires its own
+`PreModelRequest`, a failed attempt is not by itself the end of the turn: a turn
+that died on a provider error is a failed `PostModelRequest` that no further
+attempt follows. No hook states that the turn ended.
 
 `SessionEnd` adds `reason: "other"`. It has no `turn_id`, does not run for
 subagents, and is advisory: its output cannot steer Codex or keep the session
@@ -393,3 +427,10 @@ normalized hook identity. Codex's algorithm
 - https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/core/src/tools/registry.rs
 - https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/core/src/tools/handlers/apply_patch.rs
 - https://github.com/openai/codex/blob/rust-v0.157.1/codex-rs/core/src/tools/hook_names.rs
+- https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/protocol/src/protocol.rs
+- https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/session/turn.rs
+- https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/hooks/src/schema.rs
+- https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/hooks/schema/generated/model-request.command.input.schema.json
+- https://github.com/openai/codex/pull/55144
+- https://github.com/openai/codex/issues/54884
+- https://github.com/openai/codex/issues/45977
