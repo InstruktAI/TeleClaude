@@ -228,10 +228,14 @@ a turn fires no `Stop`, no `Interrupt` and no legacy `notify`
 it as covering an Esc interrupt; its trigger points are not verified here.
 
 `PreModelRequest` and `PostModelRequest` are observation-only: their output
-cannot veto a request or alter model context. Both fire around every sampling
-request attempt of a turn, retries included (`run_model_request_hooks` in
+cannot veto a request or alter model context. Both wrap each sampling attempt
+of a turn's stream-retry loop (`run_model_request_hooks` in
 `codex-rs/core/src/session/turn.rs`), and add `turn_id` and, for a subagent,
-`agent_id` and `agent_type`. Compaction's own model requests
+`agent_id` and `agent_type`. Transport-level retries inside one attempt share
+that attempt's hook pair: the model client recovers a recoverable
+authentication error and resends the request within the same stream call
+(`codex-rs/core/src/client.rs`), so a recovered error produces no failed
+`PostModelRequest`. Compaction's own model requests
 (`codex-rs/core/src/compact.rs`) run without these hooks. `PostModelRequest`
 also carries:
 
@@ -243,12 +247,13 @@ also carries:
 }
 ```
 
-A provider error on a sampling request therefore surfaces as `PostModelRequest`
-with `status: "failed"` and the error text; a provider error during compaction
-surfaces through no hook. Because a retried attempt fires its own
+A provider error that ends a sampling attempt therefore surfaces as
+`PostModelRequest` with `status: "failed"` and the error text; an error the
+client recovers within the attempt, and a provider error during compaction,
+surface through no hook. Because a stream-loop retry fires its own
 `PreModelRequest`, a failed attempt is not by itself the end of the turn: a turn
-that died on a sampling-request error is a failed `PostModelRequest` that no
-further attempt follows. No hook states that the turn ended.
+that died on a sampling error is a failed `PostModelRequest` that no further
+attempt follows. No hook states that the turn ended.
 
 `SessionEnd` adds `reason: "other"`. It has no `turn_id`, does not run for
 subagents, and is advisory: its output cannot steer Codex or keep the session
@@ -284,8 +289,8 @@ position; it is not a streaming-output signal.
 | `SubagentStop`      | `turn_id`, `agent_id`, `agent_type`, `agent_transcript_path`, `stop_hook_active`, `last_assistant_message`, `permission_mode` | No. `decision: "block"` with `reason` requests subagent continuation instead.                                                                                                          | Subagent-stop signal; `last_assistant_message` may carry its latest output.      | `stop_hook_active` distinguishes a stop already continued by this hook. It is not an idle flag or a sequence counter.               |
 | `Stop`              | `turn_id`, `stop_hook_active`, `last_assistant_message`, `permission_mode`                                                    | **No.** There is no `hookSpecificOutput.additionalContext` field. `decision: "block"` plus `reason` creates a new continuation user prompt; it is not injection into the running turn. | Main-agent stop signal; `last_assistant_message` may carry the completed output. | `stop_hook_active` distinguishes a turn already continued by `Stop`. It is not an idle flag or a sequence counter.                  |
 | `Interrupt`         | `turn_id`, `permission_mode`                                                                                                  | Not verified here.                                                                                                                                                                     | Interrupted-turn signal.                                                         | Trigger points are not verified here; no counter or idle flag is provided.                                                          |
-| `PreModelRequest`   | `turn_id`; `agent_id`, `agent_type` for a subagent                                                                            | No; observation-only.                                                                                                                                                                  | Sampling-request attempt starting; compaction requests excluded.                 | Fires per attempt, so retries repeat it within one turn.                                                                            |
-| `PostModelRequest`  | `turn_id`, `status` (`completed`, `failed`, `cancelled`), `error`, `token_usage`; `agent_id`, `agent_type` for a subagent     | No; observation-only.                                                                                                                                                                  | Sampling-request attempt finished; compaction requests excluded.                 | `status` distinguishes completion, failure and cancellation per attempt; a failed attempt may be followed by a retry.               |
+| `PreModelRequest`   | `turn_id`; `agent_id`, `agent_type` for a subagent                                                                            | No; observation-only.                                                                                                                                                                  | Sampling attempt starting; compaction requests excluded.                         | Fires per stream-loop attempt; transport retries inside an attempt do not repeat it.                                                |
+| `PostModelRequest`  | `turn_id`, `status` (`completed`, `failed`, `cancelled`), `error`, `token_usage`; `agent_id`, `agent_type` for a subagent     | No; observation-only.                                                                                                                                                                  | Sampling attempt finished; compaction requests excluded.                         | `status` distinguishes completion, failure and cancellation per attempt; a failed attempt may be followed by a stream-loop retry.   |
 
 Codex exposes no generic per-message activity counter, idle indicator, or
 streaming-text delta. For cadence, `PreToolUse` and `PostToolUse` are the only
@@ -434,6 +439,7 @@ normalized hook identity. Codex's algorithm
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/protocol/src/protocol.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/session/turn.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/compact.rs
+- https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/client.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/hooks/src/schema.rs
 - https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/hooks/schema/generated/model-request.command.input.schema.json
 - https://github.com/openai/codex/pull/55144
