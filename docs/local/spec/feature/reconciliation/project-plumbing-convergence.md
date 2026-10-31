@@ -54,6 +54,8 @@ maintenance steps. Publication performs none of it: deploying committed sources
 installs, refreshes and withdraws nothing, and the read-only gate touches
 nothing.
 
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 Convergence additionally runs without an initialization or an installation at
 the commit boundary, whenever an advancement of a canonical checkout's main
 branch changes what a root's convergence produces:
@@ -67,6 +69,28 @@ branch changes what a root's convergence produces:
 - a TeleClaude commit changing a TeleClaude-owned hook template, help-desk
   template or home master template converges every registered root on that
   machine and the platform home, and TeleClaude's publication then follows it.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+Convergence additionally runs without an initialization or an installation at
+the commit boundary, whenever an advancement of a canonical checkout's main
+branch changes the declaration a root's convergence reads:
+
+- a project commit changing the project's declaration while that declaration
+  enables a help desk converges that project, and the project's publication
+  then follows it;
+- a platform-home commit changing the global declaration or a person or
+  company declaration converges the platform home, and the platform home's
+  publication then follows it.
+
+A change to a TeleClaude-owned hook template, help-desk template or home
+master template reaches the fleet through the install of the release that
+carries it: a completed install converges every registered root on that machine
+and the platform home to that release's templates
+(`local/projects/teleclaude/spec/feature/reconciliation/installed-releases`).
+A commit in the TeleClaude project converges no root but its own.
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 The act is the one initialization already performs — the same comparison
 against the template, the same sanctioned actions, the same preservation of a
@@ -133,6 +157,9 @@ publication.
   dirty. The one other project-tracked file TeleClaude ever writes is the
   `.gitattributes` docs-filter line, written additively at adoption by its own
   step and never touched by a later convergence.
+
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 - **Installation converges machine plumbing only.** Machine installation's
   convergence of the TeleClaude checkout and of the platform home performs the
   hooks, filter driver and schema link fields above and seeds no help desk and
@@ -146,6 +173,25 @@ publication.
   commit-boundary trigger invokes, and it is invocable on its own. A root that
   already matches is left untouched, an unavailable root is reported rather
   than failing the run, and roots on other machines are outside its reach.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+- **Machine installation converges machine plumbing only.** The machine
+  installation target's convergence of the TeleClaude checkout and of the
+  platform home performs the hooks, filter driver and schema link fields above
+  and seeds no help desk and no master. The fleet convergence a completed
+  install performs is the whole act.
+- **Fleet convergence is one operation.** A single operation converges every
+  registered project root on the machine and the platform home: it enumerates
+  the project entries of the project registry — a person or company home on it
+  is part of the platform home — compares each root's installed plumbing and
+  seeded masters against the current templates and its declaration, and
+  performs only the actions that close a gap. It is what a completed install
+  invokes, and it is invocable on its own. A root that
+  already matches is left untouched, an unavailable root is reported rather
+  than failing the run, and roots on other machines are outside its reach.
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 ### Use cases
 
@@ -218,12 +264,27 @@ And the same holds for a project that subscribes neither code nor docs
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`).
 - A changed master template reaches no existing master: convergence seeds only
   absent masters, so an existing master changes only by its home's edit.
+
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 - A changed hook template reaches a machine's registered roots when that change
   reaches the machine's canonical checkout, so installed plumbing lags only
   between a template change and its arrival there; a machine that has not
   received it has nothing newer to install. The capability declaration itself
   needs no reinstallation to take effect, because the installed plumbing reads
   it on each invocation.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+- A changed hook template reaches a machine's registered roots when the
+  release that carries it is installed on that machine, so installed plumbing
+  lags only between a template change and that install; a machine that has not
+  installed it has nothing newer to converge to. The capability declaration
+  itself needs no reinstallation to take effect, because the installed plumbing
+  reads it on each invocation.
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
+
 - The TeleClaude checkout's own hooks and filter driver, and the platform
   home's, are installed by the machine installation target, which is not a
   project initialization path; between one installation and the next the

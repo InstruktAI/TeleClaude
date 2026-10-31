@@ -116,6 +116,8 @@ starts the daemon on it, under the guarantees of
   does not reach is reported and keeps its release installed under Releases; it
   never changes the install's outcome.
 
+<!-- planned-change:commit-maintenance-sheds-platform-work -->
+
 - **Publication follows the install.** Publishing the installed release's
   configuration schemas
   (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
@@ -124,6 +126,22 @@ starts the daemon on it, under the guarantees of
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`)
   follows a completed install. A publication failure is reported and replayed;
   it never changes which release is active.
+
+<!-- change:commit-maintenance-sheds-platform-work -->
+
+- **Publication and fleet convergence follow the install.** Publishing the
+  installed release's configuration schemas
+  (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
+  and, where the machine holds no project checkout of the platform to publish
+  them, its documentation and agent artifacts
+  (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`),
+  then converging every registered root and the platform home to the installed
+  release's templates
+  (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`),
+  follows a completed install. A failure of either is reported and replayed;
+  it never changes which release is active.
+
+<!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
 - **Every route is this act.** The bootstrap, channel convergence and an
   explicit `telec app install` all reach the live platform through it. What a

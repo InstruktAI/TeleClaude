@@ -50,10 +50,9 @@ versions.
 
 The migrated shape is persisted in exactly two ways:
 
-- **A migration run.** Canonical-main maintenance runs one when an activation
-  changes the migration list, inside that activation's stopped-daemon window
-  (`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`),
-  over every document
+- **A migration run.** An install runs one inside its stopped window
+  (`local/projects/teleclaude/design/architecture/installation`), over every
+  document
   the tier registries name: the machine configuration, the home's global
   configuration, every person and company configuration at its designated
   location, and every registered project root. Registering a project runs one
