@@ -15,6 +15,7 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.config.machine import config
 from teleclaude.config.validation import AvailabilityState
+from teleclaude.core.degradation import DegradationRecord, DegradedComponent
 from teleclaude.core.delivery import resolve_destination
 from teleclaude.core.events import SystemCommand, SystemCommandContext
 from teleclaude.core.models import MessageMetadata
@@ -74,14 +75,21 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
     Narrow flows must not provision unrelated UI lanes.
     """
 
-    def __init__(self, task_registry: "TaskRegistry", runtime_readiness: "RuntimeReadiness") -> None:
+    def __init__(
+        self,
+        task_registry: "TaskRegistry",
+        runtime_readiness: "RuntimeReadiness",
+        degradations: DegradationRecord,
+    ) -> None:
         """Initialize adapter runtime.
 
         Args:
             task_registry: Daemon-owned TaskRegistry for tracking and supervising background tasks
+            degradations: Daemon-owned record in which a UI adapter that fails to start is marked degraded
         """
         self.task_registry = task_registry
         self.runtime_readiness = runtime_readiness
+        self.degradations = degradations
         self.adapters: dict[str, BaseAdapter] = {}  # adapter_type -> adapter instance (UI adapters only)
         # Redis is a transport, not an adapter: kept off the adapter registry so
         # adapter counts, UI resolution, and headless detection stay honest.
@@ -164,10 +172,11 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         Per adapter, surfaced once here and never crashing the daemon:
         - DISABLED        (enabled: false)            → skipped silently
         - MISCONFIGURED   (enabled, missing creds)    → WARNING; not started, not routed
-        - ERROR           (configured, start failed)  → ERROR; left unregistered (degraded)
+        - ERROR           (configured, start failed)  → ERROR; left unregistered, marked degraded
         - OK                                          → started and registered
 
-        Outcomes are recorded in self.adapter_status for user surfacing. The Redis
+        Outcomes are recorded in self.adapter_status, and a failed start is marked in
+        self.degradations so the daemon's health and status report it. The Redis
         transport is required infrastructure (not a UI adapter) and is started
         separately; its failure remains fatal.
         """
@@ -199,6 +208,14 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             except Exception as exc:
                 logger.error("Adapter %s is configured but failed to start: %s", name, exc)
                 self.adapter_status[name] = AdapterStatusReport(AdapterStatus.ERROR, error=str(exc))
+                # The reason names the failure's type, never its message: a provider's start error can carry
+                # the configured credential. The message stays in the daemon log.
+                self.degradations.mark(
+                    DegradedComponent.UI_ADAPTER,
+                    f"failed to start ({type(exc).__name__}); see the daemon log for the cause; it stays down"
+                    " until the daemon restarts",
+                    subject=name,
+                )
                 continue
             self.adapters[name] = adapter
             self.adapter_status[name] = AdapterStatusReport(AdapterStatus.OK)

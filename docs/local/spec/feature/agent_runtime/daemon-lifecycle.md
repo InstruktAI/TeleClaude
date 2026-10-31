@@ -34,13 +34,11 @@ single-instance lock, configuration, storage, the operations service, the event
 platform and the request surface are core: a failure among them that is not
 retryable, or exhausts its retries, ends startup. An optional component — a UI
 adapter, chiptunes, one project's workflow store — that fails is logged as an
-error, recorded as degraded and left out; startup continues, and the health
-answer on the local socket names each degraded component until it serves again
-(`local/projects/teleclaude/policy/daemon-availability`).
+error, recorded as degraded and left out; startup continues, and its reporting
+is owned by `local/projects/teleclaude/policy/daemon-availability`.
 
 A startup that ends runs the ordinary stop, releases the lock, and then ends
-the process with a non-zero status without waiting for worker threads, so a
-blocked worker cannot keep a process without its request surface alive.
+the process with a non-zero status without waiting for worker threads.
 
 A failure resuming a prior session startup is recorded for that session and
 does not block recovery of other sessions or daemon startup completion.

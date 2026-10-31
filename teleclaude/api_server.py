@@ -55,6 +55,7 @@ from teleclaude.api.bugs_routes import router as bugs_router
 from teleclaude.api.commit_review_stamp_routes import router as commit_review_stamp_router
 from teleclaude.api.config_routes import router as config_router
 from teleclaude.api.event_serialization import agent_availability_event_dto
+from teleclaude.api.health_degradations import degradations_within_reach
 from teleclaude.api.ingress_listener import WebhookIngressListener
 from teleclaude.api.operations_routes import router as operations_router
 from teleclaude.api.relay_boundary import relay_boundary
@@ -81,7 +82,7 @@ from teleclaude.api_models import (
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
-from teleclaude.api_models_health import DegradationDTO, HealthDTO, PreparationObservationDTO
+from teleclaude.api_models_health import HealthDTO, PreparationObservationDTO
 from teleclaude.api_models_identity import WhoAmIDTO
 from teleclaude.api_models_operations import OperationFailedEventDTO, OperationSucceededEventDTO
 from teleclaude.caller_identity import CliCaller, PersonCliCaller, Platform, SessionOf, authorizing_role
@@ -92,7 +93,7 @@ from teleclaude.config.schema import CURRENT_SCHEMA_VERSION
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.configuration_clearance import standing_for_caller
 from teleclaude.core.db import db
-from teleclaude.core.degradation import get_degradations
+from teleclaude.core.degradation import DegradationRecord
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.events import (
     AgentHookEvents,
@@ -176,8 +177,11 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         runtime_settings: RuntimeSettings | None = None,
         reminder_service: ReminderService | None = None,
         refresh_local_projects: Callable[[ProjectRefreshTrigger], Awaitable[None]] | None = None,
+        *,
+        degradations: DegradationRecord,
     ) -> None:
         self.client = client
+        self._degradations = degradations
         self._start_commit = read_checkout_head(REPO_ROOT)
         self._cache: DaemonCache | None = None  # Initialize private variable
         self.session_materializer = session_materializer
@@ -209,7 +213,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         sessions_actions_routes.configure(client=client)
         readiness_routes.configure(client=client)
         computers_routes.configure(cache=cache)
-        projects_routes.configure(cache=cache, refresh_local_projects=refresh_local_projects)
+        projects_routes.configure(cache=cache, refresh_local_projects=refresh_local_projects, degradations=degradations)
         tui_routes.configure(cache=cache)
         settings_routes.configure(runtime_settings=runtime_settings)
         mcp_routes.configure(runtime=self.mcp_runtimes)
@@ -528,12 +532,16 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 reset_caller_session_id(caller_token)
 
         @self.app.get("/health", response_model_exclude_none=True)
-        async def health(request: Request) -> HealthDTO:  # pyright: ignore
+        async def health(  # pyright: ignore
+            request: Request,
+            identity: CallerIdentity = Depends(carried_caller),
+        ) -> HealthDTO:
             """Health check endpoint, carrying the commit the daemon's code stood on at its start.
 
             The preparation observation, the configuration migration reach and the degraded
             components ride only on the local API socket: the TCP webhook listener shares this
-            app and has a bound port in its server address.
+            app and has a bound port in its server address. A degraded project is shown only to
+            the callers whose reach admits the project.
             """
             server = request.scope.get("server")
             over_tcp = server is not None and server[1] is not None
@@ -543,7 +551,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             degraded = (
                 None
                 if over_tcp
-                else tuple(DegradationDTO.from_degradation(entry) for entry in get_degradations().snapshot())
+                else await asyncio.to_thread(degradations_within_reach, self._degradations.snapshot(), identity)
             )
             return HealthDTO(
                 start_commit=self._start_commit,
