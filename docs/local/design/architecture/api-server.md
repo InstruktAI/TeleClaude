@@ -105,8 +105,6 @@ session stream.
   (`local/projects/teleclaude/design/architecture/command-classification`).
   Connection projection options are not requests and name no computer.
 
-<!-- planned:api-clearance-consumes-owner-admission -->
-
 ### Owner admission at API re-entry
 
 The relay receiver publishes the command admission it has completed as an
@@ -121,7 +119,6 @@ admission follows the dependency's existing local clearance path. Object and
 configuration-target decisions retain their owning contracts. The identity
 decision remains owned by
 `local/projects/teleclaude/spec/feature/identity/cross-computer-authorization`.
-<!-- /planned:api-clearance-consumes-owner-admission -->
 
 ## Primary flows
 
