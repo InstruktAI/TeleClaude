@@ -1,14 +1,12 @@
-"""Converge the accepted-turn ledger tables that an older schema left in a shape the binder cannot write.
+"""Converge the accepted-turn ledger tables to the shape ``schema.sql`` declares.
 
-Migration 079 created the aggregate with ``CREATE TABLE IF NOT EXISTS``, which does nothing to a table an earlier
-``schema.sql`` run already created. A database that recreated the retired ledger before 079 therefore kept its
-retired shape: nullable native identity on the root, a receipt table without ``envelope_index``, and a parts table
-whose ``part_kind`` does not admit ``caller``. The binder's single transaction rolls back on every such table.
+Applies to a database whose ledger tables are stale: nullable native identity on the root, a receipt table without
+``envelope_index``, or a parts table whose ``part_kind`` constraint does not admit ``caller``. The binder's single
+transaction rolls back on every such table.
 
-Each stale table is dropped, children before the root, and created as ``schema.sql`` declares it. A stale table holds
-no committed row: every binding write inserts the root, its parts and its receipt in one transaction that the stale
-shape rolls back, and no binder wrote between the retirement and 079. A table already in the current shape, or in any
-later shape that still admits ``caller``, is left as it is.
+Each stale table is dropped, children before the root, and created as ``schema.sql`` declares it. The migration
+assumes a stale table holds no committed row, since the stale shape rejects every binding write. A table already in
+the current shape, or in any later shape that still admits ``caller``, is left as it is.
 """
 
 from __future__ import annotations
