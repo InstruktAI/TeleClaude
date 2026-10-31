@@ -5,9 +5,10 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import delete, or_, update
+from sqlalchemy import and_, delete, not_, or_, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .. import db_models
 from ..dates import parse_iso_datetime
@@ -27,6 +28,8 @@ _DELIVERED_STATUS = "delivered"
 _FAILED_STATUS = "failed"
 _PENDING_STATUS = "pending"
 _PROCESSING_STATUS = "processing"
+_REJECTED_RECEIPT_LIMIT = 1024
+_REJECTED_RECEIPT_IDS: set[int] = set()
 
 
 def _decode_inbound_row(row: db_models.InboundQueue) -> InboundQueueRow:
@@ -78,6 +81,40 @@ class NativeReference:
     runtime: str
     native_session_id: str
     entry_id: str
+
+
+async def _binding_already_recorded(
+    db_session: AsyncSession, inbound_queue_id: int, native_reference: NativeReference
+) -> bool:
+    """Whether the receipt's row or the native entry is already bound: the replay a concurrent binder leaves."""
+    receipt_bound = await db_session.exec(
+        select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id).where(
+            db_models.TurnReceiptEnvelopeRow.inbound_queue_id == inbound_queue_id
+        )
+    )
+    if receipt_bound.first() is not None:
+        return True
+    entry_bound = await db_session.exec(
+        select(db_models.AcceptedTurnBindingRow.binding_id)
+        .where(db_models.AcceptedTurnBindingRow.native_runtime == native_reference.runtime)
+        .where(db_models.AcceptedTurnBindingRow.native_session_id == native_reference.native_session_id)
+        .where(db_models.AcceptedTurnBindingRow.native_entry_id == native_reference.entry_id)
+    )
+    return entry_bound.first() is not None
+
+
+def _report_binding_rejection(binding_id: str, inbound_queue_id: int) -> None:
+    """Record a constraint rejection that is not a replay, once per receipt row while it is remembered.
+
+    Projection retries an eligible row on every pass, so each row is remembered after its first record. The
+    remembered set is bounded: reaching its limit forgets every entry, and a row rejected again is then recorded again.
+    """
+    if inbound_queue_id in _REJECTED_RECEIPT_IDS:
+        return
+    if len(_REJECTED_RECEIPT_IDS) >= _REJECTED_RECEIPT_LIMIT:
+        _REJECTED_RECEIPT_IDS.clear()
+    _REJECTED_RECEIPT_IDS.add(inbound_queue_id)
+    logger.error("turn_binding_rejected", binding_id=binding_id, inbound_queue_id=inbound_queue_id)
 
 
 @dataclass(frozen=True)
@@ -486,13 +523,18 @@ class DbInboundMixin:
             return await db_session.get(db_models.InboundQueue, row_id)
 
     async def get_unbound_delivered_caller_inbound(self, session_id: str) -> list[InboundQueueRow]:
-        """Return post-cutover caller receipts awaiting a native-entry binding."""
+        """Return keyed caller-send receipts awaiting a native-entry binding.
+
+        The population is the receipt's class, not its caller metadata: a keyed ``caller_send`` row whose
+        metadata did not survive acceptance still reaches the binder, which dispositions it without an author.
+        """
         associated_ids = select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id)
         statement = (
             select(db_models.InboundQueue)
             .where(db_models.InboundQueue.session_id == session_id)
             .where(db_models.InboundQueue.status == _DELIVERED_STATUS)
-            .where(db_models.InboundQueue.caller_session_id.is_not(None))  # type: ignore[union-attr]
+            .where(db_models.InboundQueue.source_feature == InjectedTextSourceFeature.CALLER_SEND.value)
+            .where(db_models.InboundQueue.occurrence_key.is_not(None))  # type: ignore[union-attr]
             .where(db_models.InboundQueue.binding_disposition.is_(None))  # type: ignore[union-attr]
             .where(db_models.InboundQueue.id.notin_(associated_ids))
             .order_by(db_models.InboundQueue.id.asc())  # type: ignore[arg-type]
@@ -564,6 +606,8 @@ class DbInboundMixin:
                 await db_session.commit()
             except IntegrityError:
                 await db_session.rollback()
+                if not await _binding_already_recorded(db_session, receipt.inbound_queue_id, native_reference):
+                    _report_binding_rejection(binding_id, receipt.inbound_queue_id)
                 return False
             return True
 
@@ -667,12 +711,29 @@ class DbInboundMixin:
             return list(result.all())
 
     async def cleanup_inbound(self, older_than_iso: str) -> int:
-        """Delete terminal inbound rows after their own retention interval."""
+        """Delete terminal inbound rows after their own retention interval.
+
+        A delivered row that is neither bound nor terminally dispositioned is kept while its session is retained
+        (open, or closed at or after ``older_than_iso``, the lower edge of the runtime retention window), whatever
+        its source class. It leaves with its session's retention, or earlier once it is bound or dispositioned.
+        """
+        cutoff = parse_iso_datetime(older_than_iso)
+        if cutoff is None:
+            raise ValueError(f"cleanup_inbound requires an ISO datetime cutoff, got {older_than_iso!r}")
+        retained_session_ids = await self._retained_session_ids(closed_since=cutoff)
+        bound_inbound_ids = select(db_models.TurnReceiptEnvelopeRow.inbound_queue_id)
+        awaiting_binding = and_(
+            db_models.InboundQueue.status == _DELIVERED_STATUS,
+            db_models.InboundQueue.binding_disposition.is_(None),  # type: ignore[union-attr]
+            db_models.InboundQueue.id.notin_(bound_inbound_ids),
+            db_models.InboundQueue.session_id.in_(retained_session_ids),
+        )
         stmt = (
             delete(db_models.InboundQueue)
-            .where(db_models.InboundQueue.status.in_(["delivered", "expired"]))
+            .where(db_models.InboundQueue.status.in_([_DELIVERED_STATUS, "expired"]))
             .where(db_models.InboundQueue.hold_notice_pending.is_(False))
             .where(db_models.InboundQueue.created_at < older_than_iso)
+            .where(not_(awaiting_binding))
         )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
