@@ -388,11 +388,13 @@ master admits each conversation request before sending it:
 - **The budget survives a restart.** The master records the time of each
   conversation append it sends, the end of any pause and the length of the
   last unnamed pause in its conversation store, and reads them before it
-  admits each conversation request. Every process on a computer that makes
-  GitHub requests — the daemon and the command-line and integration
-  processes — records a limit response it receives in that computer's
-  conversation store: on the master as a pause, elsewhere as a notice the
-  daemon delivers to the master.
+  admits each conversation request. A limit response is recorded in the
+  computer's conversation store by its daemon: on the master as a pause,
+  elsewhere as a notice the daemon delivers to the master. A command-line or
+  integration process that receives one hands it to its computer's daemon
+  and waits for no write; when its daemon cannot be reached the response is
+  not recorded, and the master learns of a limit it shares from the response
+  to its next request. Only the daemon writes the conversation store.
 - **A master without a record waits out the window.** A computer that
   becomes the master holds none of its predecessor's record, and a master
   whose conversation store is lost holds none of its own, so it admits no
