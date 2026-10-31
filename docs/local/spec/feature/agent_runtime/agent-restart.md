@@ -105,6 +105,7 @@ Scenario Outline: Restart failure reaches the operator
 Given a person restarts an agent while text typed into its host shell has not been submitted
 When the restart succeeds
 Then the same session continues from its native conversation exactly as the restart launched it
+And the relaunched agent runs under the launch identity the restart registered for it
 And the unsubmitted text never reaches the agent
 ```
 
