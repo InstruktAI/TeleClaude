@@ -27,6 +27,8 @@ logger = get_logger(__name__)
 PING_DEADLINE_S: Final = 3.0
 #: The pause between a lost Redis's pings.
 PING_INTERVAL_S: Final = 5.0
+#: How long one startup or attach operation on a Redis may take before that Redis counts as not answering.
+OPERATION_DEADLINE_S: Final = 10.0
 
 _LOST_EVENT: Final = "event_redis_unreachable"
 _ANSWERING_EVENT: Final = "event_redis_answering"
@@ -108,12 +110,16 @@ class RedisReachability:
             self.mark_lost((record.client,), error)
 
     async def attempt(self, clients: Sequence[object], operation: Callable[[], Awaitable[object]]) -> bool:
-        """Run an operation on these clients' Redis; a reachability failure marks them lost and returns False.
+        """Run an operation on these clients' Redis; one that fails to reach it, or outlasts the operation deadline,
+        marks them lost and returns False.
 
         Every other failure propagates.
         """
         try:
-            await operation()
+            await asyncio.wait_for(operation(), OPERATION_DEADLINE_S)
+        except TimeoutError as error:
+            self.mark_lost(clients, error)
+            return False
         except Exception as error:
             if not is_redis_unreachable(error):
                 raise
