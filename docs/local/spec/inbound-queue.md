@@ -184,13 +184,13 @@ cleanup periodically.
 <!-- change:accepted-turn-bindings-never-form -->
 
 `cleanup_inbound(older_than_iso)` deletes terminal rows older than the
-threshold. A delivered row the accepted-turn binding covers that is neither
-bound nor terminally dispositioned survives the threshold while its target
-session is retained under Session-Scoped Retention
-(`local/projects/teleclaude/design/architecture/database`), so that session's
-projection can still bind it. Once the session's retention ends, its unbound
-rows are pruned with the rest of its runtime state. Rows the binding does not
-cover are pruned by age alone. The maintenance service schedules the cleanup
+threshold. A delivered row that is neither bound nor terminally dispositioned
+survives the threshold while its target session is retained under
+Session-Scoped Retention
+(`local/projects/teleclaude/design/architecture/database`), so a row the
+accepted-turn binding covers can still be bound by that session's projection.
+Once the session's retention ends, its unbound delivered rows are pruned with
+the rest of its runtime state. The maintenance service schedules the cleanup
 periodically.
 
 <!-- /planned-change:accepted-turn-bindings-never-form -->
