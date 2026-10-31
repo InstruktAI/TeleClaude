@@ -104,9 +104,10 @@ async def _binding_already_recorded(
 
 
 def _report_binding_rejection(binding_id: str, inbound_queue_id: int) -> None:
-    """Record a constraint rejection that is not a replay, once per receipt row for the life of the process.
+    """Record a constraint rejection that is not a replay, once per receipt row while it is remembered.
 
-    Projection retries an eligible row on every pass, so an unreported defect would repeat for each pass.
+    Projection retries an eligible row on every pass, so each row is remembered after its first record. The
+    remembered set is bounded: reaching its limit forgets every entry, and a row rejected again is then recorded again.
     """
     if inbound_queue_id in _REJECTED_RECEIPT_IDS:
         return
