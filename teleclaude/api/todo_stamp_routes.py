@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
 
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_routes import _SlugStatusResponse, _validate_slug_for_update
+from teleclaude.api.todo_write_admission import admit_item_write
 from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.core.next_machine.code_conformance_return import (
     CodeConformanceReturnRefused,
@@ -28,7 +29,9 @@ from teleclaude.types.todo_return import (
     TodoReturnToWorkResultStatus,
 )
 
-router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline)])
+router = APIRouter(
+    prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline), Depends(admit_item_write)]
+)
 _RETURN_TO_WORK_CWD_REQUIRED = "cwd required: working directory not provided"
 
 

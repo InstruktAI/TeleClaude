@@ -49,6 +49,14 @@ class TodosDb(
 ):
     """Database interface for todo lifecycle state and artifacts."""
 
+    async def admit_item_write(
+        self, *, slug: str | None = None, todo_id: str | None = None, retained: bool = False
+    ) -> None:
+        """Refuse a write to the addressed item when the store cannot take it yet; the local store always can.
+
+        `slug` addresses its live item, or with `retained` the newest retained one; `todo_id` addresses its item.
+        """
+
     @property
     def project_root(self) -> Path:
         """Return the canonical project root without exposing its database path."""

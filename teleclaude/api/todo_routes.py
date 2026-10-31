@@ -37,6 +37,7 @@ from teleclaude.api.todo_update_support import (
     validate_kind_for_update,
     validate_update_request,
 )
+from teleclaude.api.todo_write_admission import admit_item_write, admit_retained_item_write
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.api_models import TodoDumpRequest
@@ -98,7 +99,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline)])
+router = APIRouter(
+    prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline), Depends(admit_item_write)]
+)
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]+$")
 _CLAIMED_HOLD_WARNING = (
@@ -801,7 +804,7 @@ async def todo_board_repair(
     )
 
 
-@router.post("/{slug}/reactivate")
+@router.post("/{slug}/reactivate", dependencies=[Depends(admit_retained_item_write)])
 async def todo_reactivate(
     slug: str,
     cwd: Annotated[str | None, Body(embed=True)] = None,

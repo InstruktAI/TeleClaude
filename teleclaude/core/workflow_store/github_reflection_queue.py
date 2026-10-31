@@ -46,6 +46,7 @@ from teleclaude.core.workflow_store.github_pull_request_reflection import (
     reflect_pull_request,
 )
 from teleclaude.core.workflow_store.github_question_projection import waiting_person_handles
+from teleclaude.core.workflow_store.github_record import WorkflowField, WorkflowTodoStatus
 from teleclaude.core.workflow_store.github_reflection import parse_projection_digests
 
 _REFLECTIONS_KEY = "github_store_reflections"
@@ -94,8 +95,15 @@ def stage_issue_reflections(
             waiting_assignees=waiting_person_handles(session, item_id, snapshot),
         )
         previous = parse_projection_digests((bookkeeping or {}).get(WorkingCopyField.PROJECTION_DIGEST))
-        changed = _github_reflection.changed_projection_parts(reflection, previous)
-        digest = _github_reflection.serialize_projection_digests(reflection.projection_digests)
+        digests = reflection.projection_digests
+        if previous is not None and _purged_from_record_alone(snapshot):
+            # A purge pushed from the record alone has no input to render the title and body from: they stay as written.
+            digests = {
+                **digests,
+                **{part: previous[part] for part in _TITLE_AND_BODY if part in previous},
+            }
+        changed = frozenset(part for part, value in digests.items() if previous is None or previous.get(part) != value)
+        digest = _github_reflection.serialize_projection_digests(digests)
         if issue_id is not None and not changed:
             save_issue_projection_digest(session, item_id, digest)
             clear_reflection_owed(session, item_id)
@@ -104,6 +112,13 @@ def stage_issue_reflections(
         projections.append((issue_number, issue_id, item_id, reflection, changed, digest))
     session.info[_REFLECTIONS_KEY] = projections
     return frozenset(settled)
+
+
+_TITLE_AND_BODY = (_github_reflection.ProjectionPart.TITLE, _github_reflection.ProjectionPart.BODY)
+
+
+def _purged_from_record_alone(snapshot: WorkingCopyItemSnapshot) -> bool:
+    return snapshot.todo.get(WorkflowField.STATUS) == WorkflowTodoStatus.PURGED and not snapshot.artifacts
 
 
 def dispatch_staged_reflections(session: Session, db_path: Path, io: GitHubWorkflowIO) -> None:

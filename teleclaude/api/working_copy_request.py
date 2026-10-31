@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api.work_feedback import declared_refusal_response
 from teleclaude.core.todos_db._write_admission import WorkingCopyWriteRefused, request_deadline
+from teleclaude.core.workflow_store.github_io_transport import GitHubIOFailure
 from teleclaude.core.workflow_store.store import GitHubIORefused
 
 logger = get_logger(__name__)
@@ -28,6 +29,10 @@ _PART_SAVED = (
 _MAY_BE_SAVED = (
     "The working copy ran out of time after the change was sent to GitHub, so it may have been saved "
     "and will appear once the store refreshes. Check before sending it again."
+)
+_AWAITING_REPUBLICATION = (
+    "This item's record awaits republication to GitHub's native artifacts, so nothing was written. "
+    "Send the request again once it has been republished."
 )
 _GITHUB_STORE_REFUSED_EVENT = "github_store_refused"
 _GITHUB_STORE_REFUSED = (
@@ -75,6 +80,13 @@ async def github_store_refusal_handler(request: Request, exc: Exception) -> JSON
         method=request.method,
         path=request.url.path,
     )
+    if exc.reason is GitHubIOFailure.AWAITING_REPUBLICATION:
+        return declared_refusal_response(
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+            detail=_AWAITING_REPUBLICATION,
+            work_feedback=_AWAITING_REPUBLICATION,
+            headers={_RETRY_AFTER_HEADER: _RETRY_AFTER_SECONDS},
+        )
     feedback = _GITHUB_STORE_REFUSED.format(reason=exc.reason.value)
     return declared_refusal_response(
         status_code=HTTPStatus.SERVICE_UNAVAILABLE, detail=feedback, work_feedback=feedback

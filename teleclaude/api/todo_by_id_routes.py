@@ -14,6 +14,7 @@ from teleclaude.api import todo_artifact_routes, todo_routes, todo_stamp_routes
 from teleclaude.api.auth import CallerIdentity, carried_caller
 from teleclaude.api.todo_slug_routes import request_project_root
 from teleclaude.api.todo_update_support import require_slug_found
+from teleclaude.api.todo_write_admission import admit_item_write
 from teleclaude.api.work_feedback import DeclaredWorkRefusal
 from teleclaude.api.working_copy_request import working_copy_request_deadline
 from teleclaude.api_models_operations import OperationStatusDTO
@@ -26,7 +27,9 @@ from teleclaude.services.work.slug_actions import SlugActionOutcome, freeze_todo
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline)])
+router = APIRouter(
+    prefix="/todos", tags=["todos"], dependencies=[Depends(working_copy_request_deadline), Depends(admit_item_write)]
+)
 
 _IDENTITY_ACTION_EVENT = "workflow.todo.identity_action"
 _CWD_REQUIRED_DETAIL = "cwd required: working directory not provided"
