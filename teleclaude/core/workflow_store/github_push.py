@@ -111,6 +111,7 @@ from teleclaude.types.github_binding import GitHubActorAssignment
 
 _CONFLICT_REFRESH_KEY = "github_store_conflict_refresh"
 _NOT_SERVED_KEY = "github_store_issue_artifacts_not_served"
+_SAVED_VERSIONS_KEY = "github_store_saved_versions"
 _EMPTY = ""
 _MAX_INLINE_STATE = 40_000
 _RUN_ASYNC_METHOD = "run_async"
@@ -167,6 +168,7 @@ class GitHubWorkflowPush:
         finally:
             session.info.pop(_PUSH_DEADLINE_KEY, None)
             session.info.pop(_COMMIT_POINT_SENT_KEY, None)
+            session.info.pop(_SAVED_VERSIONS_KEY, None)
 
     def _push_changes(self, session: Session, changes: WorkingCopyChanges) -> None:
         if issue_artifacts_fact(session) is ArtifactFact.NOT_SERVED:
@@ -286,7 +288,7 @@ class GitHubWorkflowPush:
             ledger_comment_id = ledger_comment.database_id
             record_ledger_commits(session, [(transaction_id, ledger_comment.database_id)])
 
-        saved_versions = {snapshot.item_id: _version_identities(snapshot) for snapshot, *_rest in snapshots}
+        saved_versions: dict[str, list[tuple[int, str]]] = session.info.pop(_SAVED_VERSIONS_KEY, {})
         for item_id, issue_number, issue_id, node_id, record_comment_id, committed_revision in record_ids:
             save_item_bookkeeping(
                 session,
@@ -494,6 +496,12 @@ class GitHubWorkflowPush:
                     session, self.io, GitHubOperation.CREATE_ARTIFACT, issue_number, artifact_type(name), name, content
                 )
             records[name] = append_entry(record, artifact.number, version, recreated=recreated)
+            version_id = _int_or_none(version.get(WorkflowField.VERSION_ID))
+            digest = _string_or_none(version.get(WorkflowField.DIGEST))
+            if version_id is not None and digest is not None:
+                session.info.setdefault(_SAVED_VERSIONS_KEY, {}).setdefault(snapshot.item_id, []).append(
+                    (version_id, digest)
+                )
         if snapshot.versions and issue_artifacts_fact(session) is not ArtifactFact.SERVED:
             save_issue_artifacts_fact(session, ArtifactFact.SERVED)
         return records
@@ -814,17 +822,6 @@ _SYNC_IO: dict[GitHubOperation, Callable[..., Any]] = {
     GitHubOperation.CREATE_ARTIFACT: GitHubWorkflowIO.create_artifact,
     GitHubOperation.UPDATE_ARTIFACT: GitHubWorkflowIO.update_artifact,
 }
-
-
-def _version_identities(snapshot: WorkingCopyItemSnapshot) -> tuple[tuple[int, str], ...]:
-    """The (version id, digest) of every version this push saved: the unpushed versions its snapshot carried."""
-    identities: list[tuple[int, str]] = []
-    for version in snapshot.versions:
-        version_id = _int_or_none(version.get(WorkflowField.VERSION_ID))
-        digest = _string_or_none(version.get(WorkflowField.DIGEST))
-        if version_id is not None and digest is not None:
-            identities.append((version_id, digest))
-    return tuple(identities)
 
 
 def _state_text(state: Mapping[str, object] | None) -> str | None:
