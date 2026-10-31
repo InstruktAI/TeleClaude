@@ -67,11 +67,11 @@ Pickup evaluates a project when one of these happens:
 
 Pickup evaluates the project within seconds of its change being known on this
 computer, and a change made elsewhere is known on the active computer within
-seconds of GitHub delivering its webhook. Pickup starts work that becomes
-startable within a minute of the change that made it startable; a start that
-fails is tried again within a minute of failing. Work that became startable
-while the daemon was stopping, stopped or starting is taken up once the daemon
-runs again.
+seconds of GitHub delivering its webhook. That evaluation starts each todo it
+finds ready that the project's capacity and driver admission let it start; a
+todo they hold back waits for the change that frees it, and a start that fails
+is retried as above. Work that became startable while the daemon was stopping,
+stopped or starting is taken up once the daemon runs again.
 
 ### What does not wake pickup
 
