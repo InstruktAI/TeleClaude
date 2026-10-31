@@ -59,12 +59,13 @@ computer-addressed relay, executed there, and the master's outcome is returned
 to the caller as the outcome of the request. The request carries what only the
 requesting computer holds: the content of the file `--file` names there, and
 the originating session's Discord backlink. The caller addresses a person,
-never a computer. While the requesting computer cannot reach the cluster Redis,
-the request is held there with what it carries: the caller is told that the
+never a computer. While the master cannot be reached — the requesting computer
+cannot reach the cluster Redis, or no master is live — the request is held on
+the requesting computer with what it carries: the caller is told that the
 message waits for the master, the request is carried once the master is
 reachable, and the master's outcome, a refusal included, is reported to the
-caller once it is known. When the cluster Redis answers and no master is live,
-the request fails with that error; no other computer sends in its place.
+caller once it is known. When several computers declare themselves master the
+request fails naming them; no other computer sends in its place.
 
 <!-- /planned-change:cluster-redis-outage-store-and-forward -->
 
