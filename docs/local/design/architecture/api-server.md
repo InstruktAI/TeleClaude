@@ -169,6 +169,20 @@ consumer has completed a separate computer-resource request.
 - Cache, cluster, command, and MCP recovery retain their owning contracts;
   opening a UI connection adds no recovery authority or peer-polling loop.
 
+<!-- planned:api-hang-dumps-show-where-requests-wait -->
+
+- A request held past the API watch's in-flight threshold, or event-loop lag
+  past its lag threshold (the `api.watch_*` keys in
+  `local/projects/teleclaude/spec/teleclaude-config`), makes the watch write a
+  hang dump: the complete stack of every thread and the await chain of every
+  pending event-loop task, each dump in a file of its own. The file is complete
+  on disk before the watch's error record names it, so a forced kill afterwards
+  keeps it. Dumps are spaced by the watch's cooldown, and only the newest are
+  kept, so a long stall stays bounded on disk. A dump triggered by loop lag
+  shows the loop after it resumed, never the frame that blocked it.
+
+<!-- /planned:api-hang-dumps-show-where-requests-wait -->
+
 ## See Also
 
 - docs/local/adr/0013-unified-cluster-events.md
