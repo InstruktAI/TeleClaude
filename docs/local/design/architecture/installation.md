@@ -178,8 +178,9 @@ sequenceDiagram
   Rec->>TUI: reload every running terminal interface
   Rec->>TUI: read the releases running terminal interfaces hold
   Rec->>Rec: prune older releases no running terminal interface holds
-  Rec->>Rel: publish schemas, and documentation where no platform checkout does
-  Rec->>Rel: converge every registered root and the platform home to the release templates
+  Rec->>Rel: run the release's post-install step (its own interpreter)
+  Rel->>Rel: publish schemas, and documentation where no platform checkout does
+  Rel->>Rel: converge every registered root and the platform home to its templates
 ```
 
 <!-- /planned-change:commit-maintenance-sheds-platform-work -->
@@ -264,21 +265,29 @@ sequenceDiagram
 
 <!-- change:commit-maintenance-sheds-platform-work -->
 
-- **Publication and fleet convergence follow the install.** Publication of the
-  configuration schemas
+- **Publication and fleet convergence follow the install.** After the
+  completed install, while the daemon serves, the act runs the installed
+  release's one post-install step through that release's own interpreter. The
+  step publishes the configuration schemas
   (`local/projects/teleclaude/spec/feature/reconciliation/config-schema-publication`)
-  and of the installed commit's documentation and agent artifacts
+  and the installed commit's documentation and agent artifacts
   (`local/projects/teleclaude/spec/feature/context/sync-pipeline-orchestration`),
-  and then fleet convergence of every registered root and the platform home to
-  the installed release's templates
-  (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`),
-  run after the completed install while the daemon serves, each through the
-  installed release's own interpreter. Each keeps its own partial-outcome
-  contract; a failure is reported and replayed and never changes which release
-  is active. The documentation is the installed release's only on a machine
-  with no project checkout of the platform; where that checkout is registered,
-  it publishes the platform's documentation from its own commits on main, and
-  an install leaves it in place.
+  then converges every registered root and the platform home to the installed
+  release's templates
+  (`local/projects/teleclaude/spec/feature/reconciliation/project-plumbing-convergence`).
+  Convergence runs last and the step stops at the first part that fails, so a
+  convergence failure never withholds publication. Each part keeps its own partial-outcome contract; a
+  failure is reported and replayed and never changes which release is active.
+  The documentation is the installed release's only on a machine with no
+  project checkout of the platform; where that checkout is registered, it
+  publishes the platform's documentation from its own commits on main, and an
+  install leaves it in place.
+- **The installed release owns its post-install step.** The act that runs is
+  the active release's, so it names the installed release's post-install step
+  and none of the parts inside it. An install an older release's installer
+  performs then completes every part the installed release owes, the way the
+  stopped window's migration step records the owed assessment (Assessment
+  after an install).
 
 <!-- /planned-change:commit-maintenance-sheds-platform-work -->
 
