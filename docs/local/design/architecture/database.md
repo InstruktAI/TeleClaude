@@ -23,7 +23,15 @@ visibility: public
 - **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
 - **Bounded Runtime State**: Operational rows are retained only while live or within the runtime retention window. Closed sessions, terminal queue rows, stale mappings, resolved event notifications, reviewed quarantines, session scratch directories, and session-owned workspaces are pruned by daemon maintenance.
 
+<!-- planned-change:accepted-turn-bindings-never-form -->
+
 - **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. An inbound row is never pruned before its binding is durable, and cleanup never creates a gap in which neither the accepted row nor its binding can identify the turn.
+
+<!-- change:accepted-turn-bindings-never-form -->
+
+- **Bound Turn Continuity**: Accepted input, its runtime-qualified native transcript binding, per-adapter output generation, conversation cursor disposition, and unresolved Discord send intent are durable operational state. While its session is retained, an inbound row the accepted-turn binding covers (`local/projects/teleclaude/spec/inbound-queue`) is never pruned before its binding is durable or it carries a terminal binding disposition, and cleanup never creates a gap in which neither the accepted row nor its binding can identify a retained session's turn. Once the session's retention ends, its unbound rows are pruned with the rest of its runtime state.
+
+<!-- /planned-change:accepted-turn-bindings-never-form -->
 
 - **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
 
@@ -292,6 +300,7 @@ lets recovery verify the captured audio still exists before resubmitting.
 
 - **Lock contention**: SQLite write conflicts delay/deny writes under pressure.
 - **Migration failure**: Daemon startup aborts until schema issue is fixed.
+- **Stale table shape**: A table re-created with `CREATE TABLE IF NOT EXISTS` keeps any older shape already present under its name. Startup succeeds, and the writes the current code performs against that table are rejected by its older columns and constraints. A migration that reintroduces a table converges an older shape it finds (`local/projects/teleclaude/policy/schema-and-migrations`).
 - **Outbox backlog growth**: If worker path is unhealthy, undelivered rows accumulate.
 
 - **Disk pressure**: WAL/table/freelist growth can degrade performance or fail writes; daemon maintenance checkpoints WAL passively, and store opening threshold-compacts runtime SQLite files before the daemon serves.
