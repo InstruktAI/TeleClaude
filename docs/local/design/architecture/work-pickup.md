@@ -115,22 +115,31 @@ sequenceDiagram
     participant GH as GitHub
     participant Named as Named computer
 
-    Caller->>Named: active-computer-named event (cluster), retained first
-    Caller->>GH: write the active-computer variable
+    Caller->>Named: active-computer-named event (cluster) with deadline D, retained first
+    Caller->>GH: write the variable, only if it can finish by D
     Named->>GH: read the variable on arrival
     alt names this computer
         Named->>Named: request pass for its checkout of the project
     else not yet
-        Named->>GH: read again once the naming's write deadline has passed
+        Named->>GH: read again after D plus GitHub's processing limit
         Named->>Named: request pass when it names this computer
     end
+    Named-->>Named: notice handled only after its last read
 ```
 
 The notice is the durable record of the naming's intent and is retained before
-the variable changes: a naming whose notice cannot be retained writes nothing
-and is reported as failed. Once the notice is retained, the named computer
-needs nothing more from the caller. A caller interrupted before its write
-leaves a variable that never names the told computer, which then does nothing.
+the variable changes. It carries an absolute deadline by which the naming's
+write is over: the naming computer starts the write only when the write's own
+bound ends by that deadline. When the notice is not retained in time for that,
+it writes nothing and reports the naming as failed. GitHub terminates a request
+it has processed past its documented processing limit, so after the deadline
+plus that limit, and a margin for the difference between the two computers'
+clocks, the variable can no longer change by this naming. The named computer's
+reaction is a retained consumer of its own: it reads the variable on arrival,
+and, if the variable does not yet name it, once more after that moment. It
+counts the notice handled only after its last read, so a restart in between
+redelivers the notice; its wait holds back only later naming notices. Once the notice is retained, nothing more is needed from
+the naming computer.
 
 ## Failure modes
 
@@ -149,9 +158,12 @@ leaves a variable that never names the told computer, which then does nothing.
   (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
 - **The naming notice cannot be retained:** the variable is not written and
   the naming is reported as failed.
-- **The naming is interrupted after its notice:** the named computer reads the
-  variable on arrival and once more when the write can no longer be under way,
-  and evaluates the project only when the variable names it.
+- **The naming is interrupted after its notice:** the variable either changed
+  by the deadline or did not; the named computer's last read after the
+  deadline settles which, and it evaluates the project only when the variable
+  names it.
+- **The named computer restarts while it waits for its last read:** the
+  notice is not yet handled, so it is delivered again and read again.
 - **GitHub holds the project's requests back** after a rate limit. A
   delivery-triggered refresh waits for GitHub's stated time, because GitHub
   forbids requests before it; the delivered change is adopted when it passes

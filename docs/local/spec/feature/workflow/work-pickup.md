@@ -56,8 +56,8 @@ Pickup evaluates a project when one of these happens:
   starts, and how many todos it drives at once. Every project the setting
   governs is evaluated.
 - **This computer becoming the project's active computer:** when the notice
-  of its naming arrives, and once more when the naming's write can no longer
-  be under way, if the variable did not yet name it on arrival.
+  of its naming arrives and the variable names it, or, when it does not yet,
+  once the naming can no longer change the variable and it then does.
 - **A scheduled task coming due:** its one-shot instant, or each occurrence of
   its recurring rule.
 - **A start pickup made failing** without its orchestrator starting: pickup
