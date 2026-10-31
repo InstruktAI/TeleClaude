@@ -19,8 +19,9 @@ def degradations_within_reach(
     """Show each degradation the caller may see; a project-scoped one only where the caller's reach admits it.
 
     A project-scoped entry is a record about that project, so identity-owned admission decides whether it
-    is shown at all (`local/projects/teleclaude/spec/feature/identity/data-visibility`): an entry the caller's
-    reach does not admit is left out, indistinguishable from a project that serves. Platform-level components
+    is shown at all (`local/projects/teleclaude/spec/feature/identity/data-visibility`), on the project's
+    registered facts, or on no facts when the project is no longer registered: an entry the caller's reach does
+    not admit is left out, indistinguishable from a project that serves. Platform-level components
     carry no project detail and are shown unchanged. Reads configuration and the project registry, so callers
     on a shared event loop run it on a worker thread.
     """
@@ -30,8 +31,11 @@ def degradations_within_reach(
         reach = _reach_of(identity)
         projects = registered_projects_by_path() if reach is not None else {}
         for entry in project_entries:
+            # Identity's admission rule decides every entry; a project the catalog no longer holds has no facts.
             project = projects.get(entry.subject or "")
-            if reach is not None and project is not None and reach.admits(project.subject, project.owner, None):
+            subject = project.subject if project is not None else None
+            owner = project.owner if project is not None else None
+            if reach is not None and reach.admits(subject, owner, None):
                 shown.append(DegradationDTO.from_degradation(entry))
     return tuple(sorted(shown, key=lambda dto: dto.since))
 
