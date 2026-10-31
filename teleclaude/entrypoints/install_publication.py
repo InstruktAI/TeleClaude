@@ -1,19 +1,28 @@
-"""Publish an installed release's committed documentation and agent artifacts where no platform checkout does.
+"""The installed release's post-install step.
 
-A machine with a registered checkout of the platform's own project receives its documentation and agent
-artifacts from that checkout's commits, so an install publishes none of them over it. A machine without
-one receives them from the release it installs.
+The install act runs this module under the release's own interpreter once the release is serving. It runs, in
+order, documentation publication, configuration schema publication and fleet convergence, and stops at the
+first part that fails, naming it on its last output line.
+
+Documentation publication covers the committed documentation and agent artifacts where no platform checkout
+publishes them: a machine with a registered checkout of the platform's own project receives them from that
+checkout's commits, so an install publishes none of them over it, and a machine without one receives them
+from the release it installs.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
+from enum import StrEnum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.core.reconciliation.config_schemas import run_schema_publication
 from teleclaude.logging_config import setup_logging
+from teleclaude.project_setup.plumbing import run_fleet_convergence
 from teleclaude.services.project_catalog.service import get_project_catalog_service
 from teleclaude.sync import (
     HomePublicationOutcome,
@@ -38,12 +47,21 @@ _CHECKOUT_PUBLISHES_LINE = (
 )
 _FAILED_EXIT_CODE = 1
 _SUCCEEDED_EXIT_CODE = 0
+_PART_FAILED = "Post-install step failed at {part}."
 _OUTCOME_LINES = {
     HomePublicationOutcome.PUBLISHED: _PUBLISHED_HOME_LINE,
     HomePublicationOutcome.UNCHANGED: _UNCHANGED_HOME_LINE,
     HomePublicationOutcome.SKIPPED: _SKIPPED_HOME_LINE,
     HomePublicationOutcome.FAILED: _FAILED_HOME_LINE,
 }
+
+
+class PostInstallPart(StrEnum):
+    """The parts of the post-install step, in the order they run."""
+
+    DOCUMENTATION_PUBLICATION = "documentation publication"
+    SCHEMA_PUBLICATION = "configuration schema publication"
+    FLEET_CONVERGENCE = "fleet convergence"
 
 
 def run_install_publication(release_root: Path) -> int:
@@ -86,13 +104,31 @@ def run_install_publication(release_root: Path) -> int:
     return exit_code
 
 
+def run_post_install_step(release_root: Path) -> int:
+    """Run every post-install part for the release at ``release_root``, in order, stopping at the first that fails.
+
+    The failing part is named on the last output line, so the install act's failure detail carries it.
+    """
+    parts: tuple[tuple[PostInstallPart, Callable[[], int]], ...] = (
+        (PostInstallPart.DOCUMENTATION_PUBLICATION, lambda: run_install_publication(release_root)),
+        (PostInstallPart.SCHEMA_PUBLICATION, run_schema_publication),
+        (PostInstallPart.FLEET_CONVERGENCE, run_fleet_convergence),
+    )
+    for part, run in parts:
+        if run() != _SUCCEEDED_EXIT_CODE:
+            sys.stderr.flush()
+            print(_PART_FAILED.format(part=part.value), flush=True)
+            return _FAILED_EXIT_CODE
+    return _SUCCEEDED_EXIT_CODE
+
+
 def main(arguments: list[str] | None = None) -> int:
-    """Run install-time publication for the release named by ``--release``, never for the caller's directory."""
+    """Run the post-install step for the release named by ``--release``, never for the caller's directory."""
     setup_logging()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(_RELEASE_OPTION, type=Path, required=True)
     options = parser.parse_args(arguments)
-    return run_install_publication(options.release.resolve())
+    return run_post_install_step(options.release.resolve())
 
 
 if __name__ == "__main__":

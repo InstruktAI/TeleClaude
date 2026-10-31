@@ -16,7 +16,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.cli.tui.processes import live_tui_start_commits, signal_tui_reload
-from teleclaude.constants import API_SOCKET_PATH, PLUMBING_MODULE
+from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core.integration.daemon_window import (
     Lifecycle,
     StopAttempt,
@@ -66,7 +66,6 @@ _LOCAL_REDIS_PREPARE_FAILED_EVENT = "install_local_redis_preparation_failed"
 # failure, and a command that could not start at all. Any other end, a kill or a crash included, is uncertain.
 _MIGRATE_CERTAIN_FAILURES = frozenset({MigrationExitCode.FAILED, COMMAND_START_FAILURE_EXIT_CODE})
 _PUBLICATION_MODULE = "teleclaude.entrypoints.install_publication"
-_SCHEMA_MODULE = "teleclaude.core.reconciliation.config_schemas"
 _RELEASE_OPTION = "--release"
 _PUBLISH_TIMEOUT_SECONDS = 900.0
 # A release that ships the receiver's socket unit runs a receiver that adopts the socket its unit holds; an earlier
@@ -285,27 +284,21 @@ class LiveInstallPorts:
                 remove_release(self._layout, revision)
 
     def publish(self, revision: str) -> str | None:
-        """Publish the release's configuration schemas, and its documentation and agent artifacts where no platform checkout publishes them, then converge every registered root and the platform home to its templates, through its own interpreter."""
+        """Run the release's post-install step through its own interpreter: its documentation and agent-artifact publication, configuration schema publication and fleet convergence."""
         release = self._layout.release_path(revision)
-        python = str(release / _RELEASE_PYTHON)
-        for arguments in (
-            (_MODULE_OPTION, _PUBLICATION_MODULE, _RELEASE_OPTION, str(release)),
-            (_MODULE_OPTION, _SCHEMA_MODULE),
-            (_MODULE_OPTION, PLUMBING_MODULE),
-        ):
-            result = run_process_group_command(
-                [python, *arguments],
-                release,
-                release_process_environment(),
-                timeout_seconds=_PUBLISH_TIMEOUT_SECONDS,
-                capture_output=secret_output_masker(release),
+        result = run_process_group_command(
+            [str(release / _RELEASE_PYTHON), _MODULE_OPTION, _PUBLICATION_MODULE, _RELEASE_OPTION, str(release)],
+            release,
+            release_process_environment(),
+            timeout_seconds=_PUBLISH_TIMEOUT_SECONDS,
+            capture_output=secret_output_masker(release),
+        )
+        if result.timed_out:
+            return _PUBLISH_TIMED_OUT.format(module=_PUBLICATION_MODULE, seconds=_PUBLISH_TIMEOUT_SECONDS)
+        if result.exit_code != 0:
+            return _PUBLISH_FAILED.format(
+                module=_PUBLICATION_MODULE, exit_code=result.exit_code, output=result.output_tail or _NO_OUTPUT
             )
-            if result.timed_out:
-                return _PUBLISH_TIMED_OUT.format(module=arguments[1], seconds=_PUBLISH_TIMEOUT_SECONDS)
-            if result.exit_code != 0:
-                return _PUBLISH_FAILED.format(
-                    module=arguments[1], exit_code=result.exit_code, output=result.output_tail or _NO_OUTPUT
-                )
         return None
 
     def _stop_lifecycle(self, checkout: Path | None) -> Lifecycle | None:

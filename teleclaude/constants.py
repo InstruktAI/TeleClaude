@@ -572,7 +572,6 @@ CHECKPOINT_BASE_ACTIONS: dict[str, CheckpointAction] = {
 
 
 BLUEPRINT_MAINTENANCE_ACTION_ID: Final[str] = "blueprint"
-PLUMBING_MODULE: Final[str] = "teleclaude.project_setup.plumbing"
 
 
 CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
@@ -584,7 +583,7 @@ CHECKPOINT_BASE_MAINTENANCE: dict[str, MaintenanceAction] = {
     ),
     "plumbing-convergence": MaintenanceAction(
         id="plumbing-convergence",
-        command=("{interpreter}", "-m", PLUMBING_MODULE, "."),
+        command=("{interpreter}", "-m", "teleclaude.project_setup.plumbing", "."),
         main_only=True,
         precedence=15,
     ),
