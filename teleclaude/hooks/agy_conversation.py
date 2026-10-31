@@ -1,10 +1,10 @@
 """Antigravity conversation-store reader: the single owner of the subagent determination.
 
 Antigravity keeps one directory per conversation, primary or subagent, beside the
-conversation's transcript. A conversation born from an ``invoke_subagent`` call holds
-a message record in that directory naming the call and the invoking conversation. No
-hook payload carries this ancestry, so the record is the only evidence
-(``third-party/antigravity-cli/sub-agents``).
+conversation's transcript. A conversation born from a subagent invocation (the tool
+call ``AgyInvocationTool`` names) holds a message record in that directory naming the
+call and the invoking conversation. No hook payload carries this ancestry, so the
+record is the only evidence (``third-party/antigravity-cli/sub-agents``).
 
 Every read here is best-effort: a hook process that raises blocks the provider's tool
 call, so an absent, unreadable or malformed record reads as "no record", which leaves
@@ -80,7 +80,7 @@ def _transcript_path(conversation_dir: Path) -> Path:
 
 
 def _invoking_conversation(record_path: Path) -> str | None:
-    """Return the invoking conversation a message record names, or None when it is not an invoke_subagent origin."""
+    """Return the invoking conversation a message record names, or None when it is not a subagent-invocation origin."""
     try:
         record: object = json.loads(record_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -124,7 +124,7 @@ def read_subagent_origin(transcript_path: str) -> AgySubagentOrigin | None:
     """Return the root of a subagent conversation's invocation chain, or None for a primary conversation.
 
     The root is the conversation at the top of the chain: the first ancestor whose own
-    store holds no invoke_subagent record. The walk is bounded and stops at a repeated
+    store holds no subagent-invocation record. The walk is bounded and stops at a repeated
     conversation, so a malformed store cannot loop it. Never raises.
     """
     conversation_dir = _conversation_dir(transcript_path)

@@ -159,7 +159,7 @@ def is_subagent_transcript(path: Path, agent: AgentName) -> bool:
     an ordinary conversation from either door.
 
     Antigravity transcripts carry no marker of their own: the conversation's
-    store records an ``invoke_subagent`` origin when it is a subagent's, and the
+    store records a subagent-invocation origin when it is a subagent's, and the
     reader that owns that determination answers here.
     """
     if agent == AgentName.CLAUDE:
