@@ -58,8 +58,6 @@ The producer and reader positions for both event source streams are prepared
 independently of adapter startup. Handler execution remains gated on its own
 dependencies, including request-surface binding where required.
 
-<!-- planned:daemon-startup-aborts-without-redis -->
-
 A configured event Redis that does not answer never stops startup
 (`local/projects/teleclaude/policy/daemon-availability`). Before startup
 continues, the daemon records and logs which scope's Redis did not answer.
@@ -68,7 +66,6 @@ answer, and an unanswering Redis alone never makes it report the daemon as not
 serving; draining is reported as it is at any other time. What the event consumers on that Redis do while
 it is away and once it answers belongs to
 `local/projects/teleclaude/design/architecture/event-delivery`.
-<!-- /planned:daemon-startup-aborts-without-redis -->
 
 Before adapters, pollers or conversation delivery emit new output, startup
 reconciles durable input, transcript-binding, generation, peer-cursor and
@@ -261,8 +258,6 @@ Then startup completes and the daemon serves
 And the service manager does not relaunch it
 ```
 
-<!-- planned:daemon-startup-aborts-without-redis -->
-
 #### UC-DL19: A person keeps using their computer while its cluster Redis is unreachable
 
 ```gherkin
@@ -271,8 +266,6 @@ When the daemon starts, or the cluster Redis stops answering while the daemon se
 Then the daemon keeps serving the person's sessions and commands on that computer
 And the cluster Redis being away neither stops nor restarts the daemon
 ```
-
-<!-- /planned:daemon-startup-aborts-without-redis -->
 
 ### Runtime-local coordination
 
