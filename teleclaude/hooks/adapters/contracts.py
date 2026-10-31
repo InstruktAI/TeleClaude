@@ -54,6 +54,19 @@ class NativeToolIntent(StrEnum):
     DENY_NATIVE_SUBAGENT = "deny_native_subagent"
 
 
+class SubagentDropReason(StrEnum):
+    """Closed reasons for discarding a hook that comes from a provider-native subagent."""
+
+    CODEX_SUBAGENT = "codex_subagent"
+
+
+@dataclass(frozen=True)
+class SubagentDrop:
+    """The adapter's declaration that a hook comes from a provider-native subagent and is discarded."""
+
+    reason: SubagentDropReason
+
+
 @dataclass(frozen=True)
 class NativeHookSpec:
     """One native event TeleClaude installs and consumes for a provider."""

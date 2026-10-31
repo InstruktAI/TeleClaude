@@ -19,6 +19,7 @@ from teleclaude.hooks.adapters.contracts import (
     NativeHookSpec,
     NativeToolDenial,
     NativeToolIntent,
+    SubagentDrop,
 )
 
 
@@ -162,6 +163,15 @@ class HookAdapter:
         """Render a typed native-tool denial in the provider's wire format."""
         del raw_event_type, denial
         raise NotImplementedError
+
+    def subagent_disposition(self, raw_event_type: str, data: JsonDict) -> SubagentDrop | None:
+        """Declare what the receiver does with a hook from a provider-native subagent.
+
+        ``None`` means the hook belongs to a primary conversation. The receiver applies
+        the answer before session resolution, so a subagent's identity never reaches it.
+        """
+        del raw_event_type, data
+        return None
 
     def render_response(self, hook_event_name: str, intent: HookResponseIntent) -> HookEmission:
         """Render one legal provider response for a closed semantic intent."""

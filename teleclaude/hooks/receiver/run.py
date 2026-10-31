@@ -28,7 +28,6 @@ from teleclaude.config.loader import load_company_config_for_slug, load_global_c
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS, HeadlessBootstrapField, HookSourceKind
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
-from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.control_delivery import IDLE_WAKE_TEXT
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import (
@@ -62,6 +61,7 @@ from teleclaude.hooks.adapters.contracts import (
     HookEmission,
     HookResponseFormat,
     HookResponseKind,
+    SubagentDrop,
 )
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
@@ -250,7 +250,6 @@ class HookNormalizationOutcome(StrEnum):
 class ReceiverDropReason(StrEnum):
     """Receiver-owned reasons for drops after provider normalization."""
 
-    CODEX_SUBAGENT = "codex_subagent"
     MANAGED_DESCENDANT_SESSION_START = "managed_descendant_session_start"
     NATIVE_SUBAGENT_DENIED = "native_subagent_denied"
     SYSTEM_INJECTED_PROMPT = "system_injected_prompt"
@@ -1743,11 +1742,12 @@ def main() -> None:
     )
     execution_kind = adapter.classify_execution_kind(data)
 
-    # Drop Codex subagent events BEFORE session resolution. Session resolution
-    # persists `codex:<native_id> -> <teleclaude_session>` to the session map,
-    # which for a subagent native id would silently bind it to the parent
-    # session — violating the Session Identity Truth Spec.
-    if args.agent == AgentName.CODEX.value and is_codex_subagent_transcript(raw_native_log_file):
+    # Apply the adapter's subagent disposition BEFORE session resolution.
+    # Session resolution persists `<agent>:<native_id> -> <teleclaude_session>`
+    # to the session map, which for a subagent native id would silently bind it
+    # to the parent session — violating the Session Identity Truth Spec.
+    disposition = adapter.subagent_disposition(raw_event_type, data)
+    if isinstance(disposition, SubagentDrop):
         logger.debug(
             "subagent_drop",
             session_id="",
@@ -1761,7 +1761,7 @@ def main() -> None:
             provider=args.agent,
             raw_event_type=raw_event_type,
             outcome=HookNormalizationOutcome.DROPPED,
-            reason=ReceiverDropReason.CODEX_SUBAGENT,
+            reason=disposition.reason,
             event_type=None,
             native_session_id=raw_native_session_id,
         )
