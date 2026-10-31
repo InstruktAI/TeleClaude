@@ -591,7 +591,10 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                     # The answer the current digest was computed from, ready at once.
                     payload = self._local_projects_payload
                 else:
-                    payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
+                    payload = [
+                        project.to_dict()
+                        for project in await command_handlers.list_projects_with_todos(self.client.degradations)
+                    ]
 
                 response_json = json.dumps({_STATUS_FIELD: _SUCCESS_STATUS, _DATA_FIELD: payload})
                 await self.send_response(message_id, response_json)

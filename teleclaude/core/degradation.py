@@ -1,8 +1,9 @@
-"""The daemon's record of optional components that are not serving.
+"""The record of optional components that are not serving, owned by the daemon that serves without them.
 
-An optional component that fails keeps the daemon running without it. Its owner marks it here with the
-reason and the act that resolves it, and clears the mark when the component serves again; the health
+An optional component that fails keeps the daemon running without it. The component's owner marks it in
+the daemon's record with the reason, and clears the mark when the component serves again; the health
 endpoint publishes the current marks so the daemon's status reports it degraded rather than healthy.
+The daemon creates the record and hands it to each collaborator that marks or reads it.
 """
 
 from __future__ import annotations
@@ -18,6 +19,12 @@ class DegradedComponent(StrEnum):
 
     WORKFLOW_STORE = "workflow-store"
     CHIPTUNES = "chiptunes"
+    UI_ADAPTER = "ui-adapter"
+
+    @property
+    def project_scoped(self) -> bool:
+        """Whether each subject of this component is a project, whose details follow the caller's reach."""
+        return self is DegradedComponent.WORKFLOW_STORE
 
 
 @dataclass(frozen=True)
@@ -60,11 +67,3 @@ class DegradationRecord:
         """The current degradations, oldest first."""
         with self._lock:
             return tuple(sorted(self._entries.values(), key=lambda entry: entry.since))
-
-
-_record = DegradationRecord()
-
-
-def get_degradations() -> DegradationRecord:
-    """The process-wide degradation record."""
-    return _record

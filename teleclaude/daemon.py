@@ -37,6 +37,8 @@ _EVENT_DB_SHUTDOWN_COMPONENT = "event_db"
 _EVENT_REDIS_SHUTDOWN_COMPONENT = "event_platform_redis"
 _TTS_SHUTDOWN_COMPONENT = "tts_manager"
 _CHIPTUNES_SHUTDOWN_COMPONENT = "chiptunes_manager"
+_CHIPTUNES_PROVISION_TASK = "chiptunes-provision-watch"
+_CHIPTUNES_FAILED = "{error}; it is retried when the chiptunes configuration is applied again"
 _REGISTRY_SHUTDOWN_COMPONENT = "task_registry"
 _LIFECYCLE_SHUTDOWN_COMPONENT = "lifecycle"
 _PREPARED_EXIT_WARNING = "No termination arrived within the grace after drained; completing own shutdown"
@@ -160,7 +162,7 @@ _record_import_timing("teleclaude.core.command_service", _t)
 
 _t = time.perf_counter()
 from teleclaude.core.db import db
-from teleclaude.core.degradation import DegradedComponent, get_degradations
+from teleclaude.core.degradation import DegradationRecord, DegradedComponent
 
 _record_import_timing("teleclaude.core.db", _t)
 
@@ -422,11 +424,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.drain = get_shutdown_drain()
         self.task_registry = TaskRegistry(drain=self.drain, escalate=self.request_shutdown)
         self.runtime_readiness = RuntimeReadiness()
+        # The daemon owns the record of optional components it serves without; collaborators receive it.
+        self.degradations = DegradationRecord()
 
         # Initialize unified adapter client (observer pattern - NO daemon reference)
         self.client = AdapterClient(
             task_registry=self.task_registry,
             runtime_readiness=self.runtime_readiness,
+            degradations=self.degradations,
         )
         self.client.system_command_handler = self._handle_system_command_direct
         self.command_service = init_command_service(
@@ -563,6 +568,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             shutdown_event=self.shutdown_event,
             task_registry=self.task_registry,
             reminder_service=self.reminder_service,
+            degradations=self.degradations,
             runtime_settings=self.runtime_settings,
             log_background_task_exception=self._log_background_task_exception,
             init_voice_handler=init_voice_handler,
@@ -1079,19 +1085,45 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             raise
 
     async def _apply_chiptunes_startup_state(self) -> None:
-        """Apply chiptunes config after the event loop is running, awaiting the registry writes off-loop.
-
-        Chiptunes is optional: a failure here degrades it and startup continues without music.
-        """
+        """Apply chiptunes config after the event loop is running, awaiting the registry writes off-loop."""
         if not hasattr(self, "chiptunes_manager"):
             return
+        await self._reload_chiptunes(reattach=True)
+
+    async def _reload_chiptunes(self, *, reattach: bool = False) -> None:
+        """Apply the chiptunes configuration; chiptunes is optional, so a failure degrades it and the daemon continues.
+
+        Chiptunes stays marked degraded until it serves again: a reload clears the mark only when nothing is
+        deferred, and a corpus provisioning the reload defers is watched until it succeeds.
+        """
         try:
-            await self.chiptunes_manager.reload()
-            if self.chiptunes_manager.enabled:
+            provisioning = await self.chiptunes_manager.reload()
+            if reattach and self.chiptunes_manager.enabled:
                 await self.chiptunes_manager.reattach()
         except Exception as exc:
-            logger.error("Chiptunes startup failed; the daemon continues without it", exc_info=True)
-            get_degradations().mark(DegradedComponent.CHIPTUNES, str(exc))
+            self._mark_chiptunes_degraded(exc)
+            return
+        if provisioning is None:
+            self._clear_chiptunes_degraded()
+            return
+        self.task_registry.spawn(self._watch_chiptunes_provisioning(provisioning), name=_CHIPTUNES_PROVISION_TASK)
+
+    async def _watch_chiptunes_provisioning(self, provisioning: asyncio.Task[None]) -> None:
+        """Settle the chiptunes degradation by the outcome of its deferred corpus provisioning."""
+        try:
+            await asyncio.shield(provisioning)
+        except Exception as exc:
+            self._mark_chiptunes_degraded(exc)
+            return
+        self._clear_chiptunes_degraded()
+
+    def _mark_chiptunes_degraded(self, exc: BaseException) -> None:
+        if self.degradations.mark(DegradedComponent.CHIPTUNES, _CHIPTUNES_FAILED.format(error=exc)):
+            logger.error("Chiptunes failed; the daemon continues and reports it degraded", exc_info=exc)
+
+    def _clear_chiptunes_degraded(self) -> None:
+        if self.degradations.clear(DegradedComponent.CHIPTUNES):
+            logger.info("Chiptunes serves again")
 
     async def _settle_accepted_work(self) -> None:
         """Close admission and wait, within the preparation window, for accepted work to settle.
@@ -1380,8 +1412,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if "tts" in changed:
             self.tts_manager.reload()
         if "chiptunes" in changed:
-            await self.chiptunes_manager.reload()
-            get_degradations().clear(DegradedComponent.CHIPTUNES)
+            await self._reload_chiptunes()
             from teleclaude.api import chiptunes_routes  # startup boundary
 
             self._broadcast_chiptunes_state(await asyncio.to_thread(chiptunes_routes.current_track_preferences))
@@ -1764,7 +1795,7 @@ def _end_failed_process(exit_status: int) -> NoReturn:
     An ordinary interpreter exit waits for every worker thread, and one blocked thread would keep a
     daemon without its request surface alive indefinitely, invisible to the service manager.
     """
-    logger.error("Daemon exiting with status %d after a fatal failure", exit_status)
+    logger.error("Daemon exiting after a fatal failure", exit_status=exit_status)
     logging.shutdown()
     os._exit(exit_status)
 

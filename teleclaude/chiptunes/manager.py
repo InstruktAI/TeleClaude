@@ -50,6 +50,11 @@ def _current_chiptunes_config() -> ChiptunesConfig | None:
     return config.chiptunes
 
 
+def _chiptunes_enabled() -> bool:
+    cfg = _current_chiptunes_config()
+    return bool(cfg and cfg.enabled)
+
+
 def _is_worker_cmdline(cmdline: list[str]) -> bool:
     """Return True only for the exact ``python -m teleclaude.chiptunes.worker`` invocation.
 
@@ -234,12 +239,18 @@ class ChiptunesManager:
         return self._provision_task
 
     async def _provision_then_activate(self, music_dir: Path) -> None:
+        """Provision the corpus, then activate; a failure while chiptunes is still enabled ends the task with it.
+
+        The daemon reads the task's outcome to report chiptunes degraded.
+        """
         try:
             await provision_hvsc_corpus_async(music_dir)
         except ChiptunesProvisionError as exc:
             logger.warning(CHIPTUNES_PROVISION_FAILED_EVENT, music_dir=str(music_dir), error=str(exc))
+            if _chiptunes_enabled():
+                raise
             return
-        if not bool((cfg := _current_chiptunes_config()) and cfg.enabled):
+        if not _chiptunes_enabled():
             return
         self._activate()
 

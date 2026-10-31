@@ -19,6 +19,7 @@ from teleclaude.core.cleanup_step import cleanup_step
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
 from teleclaude.core.db import db
+from teleclaude.core.degradation import DegradationRecord
 from teleclaude.core.events import ProjectRefreshTrigger
 from teleclaude.core.next_machine.worktree_home import reconcile_worktree_homes
 from teleclaude.core.operations.service import OperationsService, get_operations_service, set_operations_service
@@ -90,6 +91,7 @@ class DaemonLifecycle:
         shutdown_event: asyncio.Event,
         task_registry: TaskRegistry,
         reminder_service: ReminderService,
+        degradations: DegradationRecord,
         runtime_settings: RuntimeSettings | None = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         init_voice_handler: Callable[[], None],
@@ -108,6 +110,7 @@ class DaemonLifecycle:
         self.shutdown_event = shutdown_event
         self.task_registry = task_registry
         self.reminder_service = reminder_service
+        self.degradations = degradations
         self._log_background_task_exception = log_background_task_exception
         self._init_voice_handler = init_voice_handler
         self._recover_session_startups = recover_session_startups
@@ -146,6 +149,7 @@ class DaemonLifecycle:
             task_registry=self.task_registry,
             runtime_settings=self.runtime_settings,
             reminder_service=self.reminder_service,
+            degradations=self.degradations,
             refresh_local_projects=self.refresh_local_projects,
         )
 
@@ -261,7 +265,7 @@ class DaemonLifecycle:
         )
 
     async def _reconcile_worktree_homes_for_local_projects(self) -> None:
-        projects = await command_handlers.list_projects_with_todos()
+        projects = await command_handlers.list_projects_with_todos(self.degradations)
         for project in projects:
             if project.path:
                 project_root = Path(project.path)
@@ -353,7 +357,7 @@ class DaemonLifecycle:
         """Refresh local project and todo snapshots from the project registry."""
         get_project_catalog_service().refresh()
         try:
-            projects = await command_handlers.list_projects_with_todos()
+            projects = await command_handlers.list_projects_with_todos(self.degradations)
         except Exception as exc:
             logger.warning("Failed to refresh local projects (trigger=%s): %s", trigger, exc, exc_info=True)
             raise

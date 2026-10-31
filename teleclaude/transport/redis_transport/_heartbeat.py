@@ -33,6 +33,7 @@ _PEER_INVALIDATION_EVENTS = frozenset({CacheEvent.TODOS_UPDATED.value, CacheEven
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
+    from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.models import PeerInfo
 
@@ -41,6 +42,7 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: periodic heartbeat with the projects digest, and peer invalidation from cache changes."""
 
     if TYPE_CHECKING:
+        client: AdapterClient
         computer_name: str
         heartbeat_interval: int
         heartbeat_ttl: int
@@ -91,7 +93,10 @@ class _HeartbeatMixin:  # pyright: ignore[reportUnusedClass]
         """
         while self._running:
             try:
-                payload = [project.to_dict() for project in await command_handlers.list_projects_with_todos()]
+                payload = [
+                    project.to_dict()
+                    for project in await command_handlers.list_projects_with_todos(self.client.degradations)
+                ]
                 self._local_projects_digest = projects_digest(payload)
                 self._local_projects_payload = payload
             except asyncio.CancelledError:
