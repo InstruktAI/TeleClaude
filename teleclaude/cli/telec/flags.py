@@ -36,7 +36,7 @@ FLAG_COMPUTER = Flag("--computer", "-c", "Target computer (optional; defaults to
 FLAG_COMPUTER_MANY = replace(
     FLAG_COMPUTER,
     arity=GREEDY,
-    desc="Query one or more remote computers via daemon API",
+    desc="Target computers; search defaults to all, use local or names to restrict it; show accepts one",
 )
 FLAG_AGENT = Flag("--agent", desc=f"Agent: {', '.join(AgentName)}", arity=VALUE)
 FLAG_MODE = Flag("--mode", desc="Thinking mode: fast, med, slow", arity=VALUE)
