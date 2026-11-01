@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Awaitable, Sequence
+from dataclasses import dataclass
 from typing import Final
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
@@ -30,6 +31,15 @@ _TARGET_FAILURE_TEMPLATE: Final = "[{target}] History search failed: {failure}"
 _LOCAL_TARGET: Final = "local"
 
 type _SearchFailure = tuple[BaseException, str | None]
+
+
+@dataclass(frozen=True)
+class _SearchOutcome:
+    responses: list[tuple[HistorySearchPayload | BaseException, str | None]]
+    skipped: list[str]
+    roster_failure: APIError | None
+    searched: list[str | None]
+    incomplete: bool
 
 
 def _print_results(
@@ -81,9 +91,7 @@ async def _search_targets(
     project: str | None,
     reach: Reach | None,
     fleet: bool,
-) -> tuple[
-    list[tuple[HistorySearchPayload | BaseException, str | None]], list[str], APIError | None, list[str | None], bool
-]:
+) -> _SearchOutcome:
     client = TelecAPIClient()
     skipped: list[str] = []
     roster_failure: APIError | None = None
@@ -132,7 +140,13 @@ async def _search_targets(
                     )
                 )
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        return list(zip(results, computers, strict=True)), skipped, roster_failure, list(computers), incomplete
+        return _SearchOutcome(
+            responses=list(zip(results, computers, strict=True)),
+            skipped=skipped,
+            roster_failure=roster_failure,
+            searched=list(computers),
+            incomplete=incomplete,
+        )
     finally:
         await client.close()
 
@@ -160,7 +174,7 @@ def display_combined_history(
         if reach is None:
             print(f"Error: {no_identity_refusal(resolved_caller)}", file=sys.stderr)
             raise SystemExit(1)
-    responses, skipped, roster_failure, searched, incomplete = asyncio.run(
+    outcome = asyncio.run(
         _search_targets(
             computers=targets,
             search_term=search_term,
@@ -176,7 +190,7 @@ def display_combined_history(
 
     answered: list[HistorySearchPayload] = []
     failures: list[_SearchFailure] = []
-    for response, computer in responses:
+    for response, computer in outcome.responses:
         if isinstance(response, BaseException):
             if not isinstance(response, APIError):
                 raise response
@@ -193,27 +207,27 @@ def display_combined_history(
             _TARGET_FAILURE_TEMPLATE.format(target=computer or _LOCAL_TARGET, failure=_failure_text(failure)),
             file=sys.stderr,
         )
-    for computer in skipped:
+    for computer in outcome.skipped:
         print(_TARGET_FAILURE_TEMPLATE.format(target=computer, failure="offline; not searched"), file=sys.stderr)
-    if incomplete:
-        assert roster_failure is not None
+    if outcome.incomplete:
+        assert outcome.roster_failure is not None
         print(
             _TARGET_FAILURE_TEMPLATE.format(
-                target="fleet", failure=f"could not enumerate computers: {_failure_text(roster_failure)}"
+                target="fleet", failure=f"could not enumerate computers: {_failure_text(outcome.roster_failure)}"
             ),
             file=sys.stderr,
         )
-        print_run_again_when_not_accepted(_not_accepted_cause(roster_failure))
+        print_run_again_when_not_accepted(_not_accepted_cause(outcome.roster_failure))
     if answered:
         _print_answers(
             answered,
             search_term=search_term,
-            computers=[target for target in searched if target is not None] if fleet else computers,
+            computers=[target for target in outcome.searched if target is not None] if fleet else computers,
             agents=agents,
             limit=limit,
             json_output=json_output,
         )
-    if incomplete:
+    if outcome.incomplete:
         raise SystemExit(1)
     if failures:
         print_run_again_when_not_accepted(refusal_cause)
