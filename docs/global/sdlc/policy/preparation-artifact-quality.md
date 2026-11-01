@@ -85,6 +85,18 @@ Before reading artifacts for context, discover what actually exists.
   holds the verified root cause and nothing more"). Only the discovery
   mechanic is shared; the relevance judgment is not.
 
+### Related work context
+
+Preparation artifacts describe the capabilities the work depends on and cite
+their owning contracts. Keep current capability distinct from intended
+capability; the preparation, review, build or delivery status of another todo
+belongs to authoritative todo state, not to the PRD, architecture or plan.
+Dispatch ordering belongs to the recorded dependency edges.
+
+A related todo may be named to locate its input or contract. Incidental
+observations needed for a handoff belong in the `log`, with their observation
+time and source; current status is read afresh from the todo owner.
+
 ### Intent shaping
 
 Preparation determines the work's authorized horizon before enriching or
@@ -634,6 +646,10 @@ docs/local/spec/feature/workflow/todo-rename#scenario-rename-conflict`. The task
 - Keeping observable outcomes in the PRD and delivery tasks in the plan lets
   each artifact answer one question without embedding implementation detail in
   the product contract.
+- A related todo's progress changes independently of the work's capability
+  contract. Copying that progress into a preparation artifact creates a stale
+  second answer; references and dependency edges preserve the relationship
+  while leaving status with its owner.
 
 - Preparation artifacts flow through a chain: creator → reviewer → gate →
   builder → code reviewer. Quality failures in early stages compound

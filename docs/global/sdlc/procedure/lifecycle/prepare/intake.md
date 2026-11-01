@@ -284,8 +284,9 @@ todo's state, and **never halt running work except on certainty**:
   to act.
 
 **Fold** the findings into the PRD: overlap into Scope (and "Docs to author or
-update" where a shifted boundary moves doc ownership), declared dependencies noted
-alongside the edges you recorded.
+update" where a shifted boundary moves doc ownership), and capability
+dependencies into the relevant product context, keeping related work with its
+owners (`sdlc/policy/preparation-artifact-quality`).
 
 ### 2. Shape the product target
 
