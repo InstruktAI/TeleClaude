@@ -317,6 +317,12 @@ class ResultStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class HistoryComputerSelector(StrEnum):
+    """Reserved fleet selection for history commands."""
+
+    ALL = "all"
+
+
 class ComputerStatus(str, Enum):
     ONLINE = "online"
     OFFLINE = "offline"
