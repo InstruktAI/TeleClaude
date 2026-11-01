@@ -17,9 +17,10 @@ from teleclaude.cli.tool_client import (
     print_run_again_when_not_accepted,
 )
 from teleclaude.config.machine import config
-from teleclaude.constants import ComputerStatus, HistoryComputerSelector
+from teleclaude.constants import HistoryComputerSelector
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_relay_failure_detail, is_remote_target
+from teleclaude.history.fleet import select_history_fleet
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
 from teleclaude.history.service import build_history_search_payload, resolve_history_reach
 from teleclaude.identity_reach import Reach
@@ -80,25 +81,26 @@ async def _search_targets(
     project: str | None,
     reach: Reach | None,
     fleet: bool,
-) -> tuple[list[tuple[HistorySearchPayload | BaseException, str | None]], list[str], APIError | None, list[str | None]]:
+) -> tuple[
+    list[tuple[HistorySearchPayload | BaseException, str | None]], list[str], APIError | None, list[str | None], bool
+]:
     client = TelecAPIClient()
     skipped: list[str] = []
     roster_failure: APIError | None = None
+    incomplete = False
     try:
         if fleet or any(is_remote_target(target, config.computer.name) for target in computers):
             await client.connect()
         if fleet:
             try:
                 roster = await client.list_computers()
-                computers = [config.computer.name] + [
-                    entry.name for entry in roster if not entry.is_local and entry.status == ComputerStatus.ONLINE
-                ]
-                skipped = [
-                    entry.name for entry in roster if not entry.is_local and entry.status != ComputerStatus.ONLINE
-                ]
             except APIError as exc:
                 roster_failure = exc
-                computers = [config.computer.name]
+                roster = None
+            selection = select_history_fleet(config.computer.name, roster)
+            computers = selection.targets
+            skipped = list(selection.skipped)
+            incomplete = selection.incomplete
         agent_filter = ",".join(agent.value for agent in agents) if agents else "all"
         tasks: list[Awaitable[HistorySearchPayload]] = []
         for computer in computers:
@@ -130,7 +132,7 @@ async def _search_targets(
                     )
                 )
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        return list(zip(results, computers, strict=True)), skipped, roster_failure, list(computers)
+        return list(zip(results, computers, strict=True)), skipped, roster_failure, list(computers), incomplete
     finally:
         await client.close()
 
@@ -158,7 +160,7 @@ def display_combined_history(
         if reach is None:
             print(f"Error: {no_identity_refusal(resolved_caller)}", file=sys.stderr)
             raise SystemExit(1)
-    responses, skipped, roster_failure, searched = asyncio.run(
+    responses, skipped, roster_failure, searched, incomplete = asyncio.run(
         _search_targets(
             computers=targets,
             search_term=search_term,
@@ -193,7 +195,8 @@ def display_combined_history(
         )
     for computer in skipped:
         print(_TARGET_FAILURE_TEMPLATE.format(target=computer, failure="offline; not searched"), file=sys.stderr)
-    if roster_failure is not None:
+    if incomplete:
+        assert roster_failure is not None
         print(
             _TARGET_FAILURE_TEMPLATE.format(
                 target="fleet", failure=f"could not enumerate computers: {_failure_text(roster_failure)}"
@@ -210,7 +213,7 @@ def display_combined_history(
             limit=limit,
             json_output=json_output,
         )
-    if roster_failure is not None:
+    if incomplete:
         raise SystemExit(1)
     if failures:
         print_run_again_when_not_accepted(refusal_cause)
