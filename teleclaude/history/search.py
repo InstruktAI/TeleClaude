@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from typing import Final
 
 from teleclaude.cli.api_client import APIError, TelecAPIClient
@@ -17,10 +17,12 @@ from teleclaude.cli.tool_client import (
     print_run_again_when_not_accepted,
 )
 from teleclaude.config.machine import config
+from teleclaude.constants import ComputerStatus, HistoryComputerSelector
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_dispatch import is_relay_failure_detail, is_remote_target
 from teleclaude.history.search_payload import HistorySearchPayload, HistorySearchRow
 from teleclaude.history.service import build_history_search_payload, resolve_history_reach
+from teleclaude.identity_reach import Reach
 from teleclaude.types.commands import CommandType
 
 _TARGET_FAILURE_TEMPLATE: Final = "[{target}] History search failed: {failure}"
@@ -67,7 +69,7 @@ def _print_results(
         print(f"    {topic}")
 
 
-async def _search_through_daemon(
+async def _search_targets(
     *,
     computers: Sequence[str | None],
     search_term: str,
@@ -76,24 +78,59 @@ async def _search_through_daemon(
     include_workers: bool,
     identity: str | None,
     project: str | None,
-) -> list[HistorySearchPayload | BaseException]:
+    reach: Reach | None,
+    fleet: bool,
+) -> tuple[list[tuple[HistorySearchPayload | BaseException, str | None]], list[str], APIError | None, list[str | None]]:
     client = TelecAPIClient()
-    await client.connect()
+    skipped: list[str] = []
+    roster_failure: APIError | None = None
     try:
+        if fleet or any(is_remote_target(target, config.computer.name) for target in computers):
+            await client.connect()
+        if fleet:
+            try:
+                roster = await client.list_computers()
+                computers = [config.computer.name] + [
+                    entry.name for entry in roster if not entry.is_local and entry.status == ComputerStatus.ONLINE
+                ]
+                skipped = [
+                    entry.name for entry in roster if not entry.is_local and entry.status != ComputerStatus.ONLINE
+                ]
+            except APIError as exc:
+                roster_failure = exc
+                computers = [config.computer.name]
         agent_filter = ",".join(agent.value for agent in agents) if agents else "all"
-        tasks = [
-            client.search_history(
-                query=search_term,
-                agent=agent_filter,
-                limit=limit,
-                computer=computer,
-                include_workers=include_workers,
-                identity=identity,
-                project=project,
-            )
-            for computer in computers
-        ]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+        tasks: list[Awaitable[HistorySearchPayload]] = []
+        for computer in computers:
+            if not is_remote_target(computer, config.computer.name):
+                assert reach is not None
+                tasks.append(
+                    asyncio.to_thread(
+                        build_history_search_payload,
+                        computer=config.computer.name,
+                        query=search_term,
+                        agents=agents,
+                        limit=limit,
+                        reach=reach,
+                        include_workers=include_workers,
+                        identity=identity,
+                        project=project,
+                    )
+                )
+            else:
+                tasks.append(
+                    client.search_history(
+                        query=search_term,
+                        agent=agent_filter,
+                        limit=limit,
+                        computer=computer,
+                        include_workers=include_workers,
+                        identity=identity,
+                        project=project,
+                    )
+                )
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return list(zip(results, computers, strict=True)), skipped, roster_failure, list(computers)
     finally:
         await client.close()
 
@@ -108,53 +145,39 @@ def display_combined_history(
     project: str | None = None,
     json_output: bool = False,
 ) -> None:
-    """Display session history using local mirrors or remote daemon search."""
+    """Search local mirrors and selected peers, expanding the fleet selector."""
+    fleet = bool(computers and HistoryComputerSelector.ALL in computers)
+    if fleet and len(computers or ()) != 1:
+        print("Error: --computer all cannot be combined with named computers", file=sys.stderr)
+        raise SystemExit(1)
     targets: Sequence[str | None] = computers if computers else [None]
-    local_targets = [computer for computer in targets if not is_remote_target(computer, config.computer.name)]
-    remote_targets = [computer for computer in targets if is_remote_target(computer, config.computer.name)]
-    responses: list[tuple[HistorySearchPayload | BaseException, str | None]] = []
-
-    if local_targets:
+    reach = None
+    if fleet or any(not is_remote_target(computer, config.computer.name) for computer in targets):
         resolved_caller = resolve_cli_identity()
         reach = resolve_history_reach(resolved_caller.caller)
         if reach is None:
             print(f"Error: {no_identity_refusal(resolved_caller)}", file=sys.stderr)
             raise SystemExit(1)
-        responses.extend(
-            (
-                build_history_search_payload(
-                    computer=config.computer.name,
-                    query=search_term,
-                    agents=agents,
-                    limit=limit,
-                    reach=reach,
-                    include_workers=include_workers,
-                    identity=identity,
-                    project=project,
-                ),
-                local_target,
-            )
-            for local_target in local_targets
+    responses, skipped, roster_failure, searched = asyncio.run(
+        _search_targets(
+            computers=targets,
+            search_term=search_term,
+            agents=agents,
+            limit=limit,
+            include_workers=include_workers,
+            identity=identity,
+            project=project,
+            reach=reach,
+            fleet=fleet,
         )
-
-    if remote_targets:
-        remote_responses = asyncio.run(
-            _search_through_daemon(
-                computers=remote_targets,
-                search_term=search_term,
-                agents=agents,
-                limit=limit,
-                include_workers=include_workers,
-                identity=identity,
-                project=project,
-            )
-        )
-        responses.extend(zip(remote_responses, remote_targets, strict=True))
+    )
 
     answered: list[HistorySearchPayload] = []
     failures: list[_SearchFailure] = []
     for response, computer in responses:
         if isinstance(response, BaseException):
+            if not isinstance(response, APIError):
+                raise response
             failures.append((response, computer))
         else:
             answered.append(response)
@@ -168,15 +191,27 @@ def display_combined_history(
             _TARGET_FAILURE_TEMPLATE.format(target=computer or _LOCAL_TARGET, failure=_failure_text(failure)),
             file=sys.stderr,
         )
+    for computer in skipped:
+        print(_TARGET_FAILURE_TEMPLATE.format(target=computer, failure="offline; not searched"), file=sys.stderr)
+    if roster_failure is not None:
+        print(
+            _TARGET_FAILURE_TEMPLATE.format(
+                target="fleet", failure=f"could not enumerate computers: {_failure_text(roster_failure)}"
+            ),
+            file=sys.stderr,
+        )
+        print_run_again_when_not_accepted(_not_accepted_cause(roster_failure))
     if answered:
         _print_answers(
             answered,
             search_term=search_term,
-            computers=computers,
+            computers=[target for target in searched if target is not None] if fleet else computers,
             agents=agents,
             limit=limit,
             json_output=json_output,
         )
+    if roster_failure is not None:
+        raise SystemExit(1)
     if failures:
         print_run_again_when_not_accepted(refusal_cause)
         if not (answered and all(_is_peer_failure(failure, computer) for failure, computer in failures)):
