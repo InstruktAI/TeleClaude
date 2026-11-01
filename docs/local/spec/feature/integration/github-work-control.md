@@ -77,10 +77,8 @@ the work.
 - **In order.** Changes received for one issue are handled according to the
   order they were made on GitHub, including when deliveries arrive out of
   order. A delayed earlier change does not overwrite a later change already
-  handled for the same field. Redelivery of an already handled change creates
-  no new act, put-back or comment, including after a later change to that
-  field. A change the item already holds also leaves the item unchanged,
-  with no put-back or comment.
+  handled for the same field. A change the item already holds leaves the
+  item unchanged, with no put-back or comment.
 - **Which computer acts.** A change to an item a session holds is handled on
   that session's computer; a change to any other item is handled on the
   project's active computer, the one computer the project names for its work
