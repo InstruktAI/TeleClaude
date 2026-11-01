@@ -28,17 +28,25 @@ multiple computers is refused before any remote call.
 
 <!-- planned:history-search-all-computers -->
 
-`all` is the reserved value of `--computer` that names every computer in the
-fleet roster `telec computers list` reports, this computer included. A search
-naming `all` searches this computer and every computer the roster lists
-online, exactly as a search naming each of them would. A computer the roster
-lists offline is reported as not searched, with that reason, and no request is
-sent to it. `all` stands alone: a search naming it beside another computer is
-refused before any computer is searched. For show, `all` names more than one
-computer and is refused like any other such request. At the CLI edge, a search
-naming `all` is cleared for this computer as a local search is, and for the
-other computers as a search naming them is
-(`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+`all` is the reserved value of `--computer` that names the fleet roster
+`telec computers list` reports, this computer included. A search without
+`--computer` uses `all`: it searches this computer and every computer the
+roster lists online, in parallel. Each offline computer is reported as not
+searched, with that reason, and no request is sent to it. An explicitly named
+computer is attempted regardless of its roster status; `--computer local`
+selects only this computer. Fleet selection consumes the roster's presence
+under `local/projects/teleclaude/policy/cache-contract`.
+
+`all` stands alone: a search naming it beside another computer is refused
+before any computer is searched. For show, `all` is refused like any other
+selection of more than one computer. Local and remote searches retain their
+owning clearance (`local/projects/teleclaude/spec/feature/identity/command-clearance`).
+
+When the fleet roster cannot be read, the search renders this computer's
+results, reports the fleet-enumeration failure with its actual cause, and
+exits nonzero. A roster failure is never presented as a successful fleet
+search. Successful searches retain the per-computer failure reporting of
+named-computer searches.
 <!-- /planned:history-search-all-computers -->
 
 ## Canonical fields
@@ -68,32 +76,20 @@ Scenario: Partial remote failures remain visible with successful results
 
 #### UC-CCHF-9: An operator searches history on every computer in the fleet
 
-```
-Scenario: Search every computer without naming them
+```gherkin
+Scenario Outline: Search the fleet without naming its computers
   Given the fleet roster lists computers A and B online beside this computer
-  When an operator runs `telec history search <terms> --computer all`
+  And the roster lists computer C offline
+  When an operator searches history <selection>
   Then this computer, A and B are searched in parallel
-  And matching conversations from all three appear in one result list, newest first
+  And matching conversations appear in one newest-first result list
   And each result identifies its computer
+  And C is reported as offline and not searched
 
-Scenario: A computer the roster lists offline is named, not searched
-  Given the fleet roster lists computer C offline
-  When an operator runs `telec history search <terms> --computer all`
-  Then C is reported as not searched because it is offline
-  And no request is sent to C
-  And the results of every searched computer are still rendered
-
-Scenario: all stands alone
-  When an operator runs `telec history search <terms> --computer all --computer A`
-  Then the search is refused before any computer is searched
-  And the refusal states that `all` cannot be combined with named computers
-
-Scenario: The roster cannot be read
-  Given this computer's daemon does not accept the request for the fleet roster
-  When an operator runs `telec history search <terms> --computer all`
-  Then this computer's results are rendered
-  And the failure to reach the rest of the fleet is reported with the daemon's cause
-  And the command exits non-zero
+  Examples:
+    | selection                      |
+    | without naming any computer    |
+    | with the computer selector all |
 ```
 
 <!-- /planned:history-search-all-computers -->
@@ -132,12 +128,10 @@ Scenario: The peer cannot answer the request
 <!-- change:history-search-all-computers -->
 
 - When `--computer` is set, only the named computers are searched: local
-  mirrors on the dispatching host are included only when its own name, or
-  `all`, is among them. There is no "include local" toggle; an operator
+  mirrors on the dispatching host are included only when its own name,
+  `local`, or `all` is among them. There is no "include local" toggle; an operator
   wanting the local results beside remote ones names the local computer too,
   or names `all`.
-- A search without `--computer` reads only this computer; searching every
-  computer is asked for with `all`.
 - A computer the roster still lists online after it has left the fleet is
   searched under `all`: the search waits out the request's time limit for it
   and reports it as failed.
