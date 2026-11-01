@@ -26,8 +26,6 @@ and the merged result list is re-sorted by `sort_timestamp` descending
 before rendering. For show, exactly one computer is allowed; a request naming
 multiple computers is refused before any remote call.
 
-<!-- planned:history-search-all-computers -->
-
 `all` is the reserved value of `--computer` that names the fleet roster
 `telec computers list` reports, this computer included. A search without
 `--computer` uses `all`: it searches this computer and every computer the
@@ -47,7 +45,6 @@ results, reports the fleet-enumeration failure with its actual cause, and
 exits nonzero. A roster failure is never presented as a successful fleet
 search. Successful searches retain the per-computer failure reporting of
 named-computer searches.
-<!-- /planned:history-search-all-computers -->
 
 ## Canonical fields
 
@@ -72,8 +69,6 @@ Scenario: Partial remote failures remain visible with successful results
   And if no computer succeeds, the empty-result message names all requested computers
 ```
 
-<!-- planned:history-search-all-computers -->
-
 #### UC-CCHF-9: An operator searches history on every computer in the fleet
 
 ```gherkin
@@ -91,8 +86,6 @@ Scenario Outline: Search the fleet without naming its computers
     | without naming any computer    |
     | with the computer selector all |
 ```
-
-<!-- /planned:history-search-all-computers -->
 
 #### UC-CCHF-5: Cross-computer search travels the daemon relay
 
@@ -117,16 +110,6 @@ Scenario: The peer cannot answer the request
 
 ## Known caveats
 
-<!-- planned-change:history-search-all-computers -->
-
-- When `--computer` is set, only the named computers are searched: local
-  mirrors on the dispatching host are included only when its own name is among
-  them. There is no "include local" toggle; an operator wanting the local
-  results beside remote ones names the local computer too, or runs the command
-  twice (once with `--computer`, once without).
-
-<!-- change:history-search-all-computers -->
-
 - When `--computer` is set, only the named computers are searched: local
   mirrors on the dispatching host are included only when its own name,
   `local`, or `all` is among them. There is no "include local" toggle; an operator
@@ -135,8 +118,6 @@ Scenario: The peer cannot answer the request
 - A computer the roster still lists online after it has left the fleet is
   searched under `all`: the search waits out the request's time limit for it
   and reports it as failed.
-
-<!-- /planned-change:history-search-all-computers -->
 
 - A remote request waits a bounded time for the peer's relay answer. A slow
   or paused peer produces a timeout failure without retry.
