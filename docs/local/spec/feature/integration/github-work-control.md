@@ -16,8 +16,9 @@ make to a field the platform reflects on the issue
 the workflow act that field stands for, taken through the workflow as that
 person. Whether the act is valid is the workflow's decision
 (`local/projects/teleclaude/spec/domain/workflow`). A change that does not
-become an accepted act is put back, with a comment saying why, so the issue
-never shows something the work record does not hold.
+become an accepted act is put back, with a comment saying why. After handling a
+delivered change, the issue reflects the work record. Pending handling and
+missed deliveries have the limits stated in Known caveats.
 
 **Business value:** the person running a project works on both ends. What
 they do to an item on GitHub counts, with no agent watching GitHub for them
@@ -73,9 +74,13 @@ the work.
   milestones and an issue that belongs to no item are left as they are. The
   issue's body and the item's pull request stay under the work record's
   authority.
-- **In order.** Changes to one issue are taken in the order they were made. A
-  change the item already holds, such as GitHub delivering the same change
-  again, is no act: the item is unchanged and nothing is put back.
+- **In order.** Changes received for one issue are handled according to the
+  order they were made on GitHub, including when deliveries arrive out of
+  order. A delayed earlier change does not overwrite a later change already
+  handled for the same field. Redelivery of an already handled change creates
+  no new act, put-back or comment, including after a later change to that
+  field. A change the item already holds also leaves the item unchanged,
+  with no put-back or comment.
 - **Which computer acts.** A change to an item a session holds is handled on
   that session's computer; a change to any other item is handled on the
   project's active computer, the one computer the project names for its work
