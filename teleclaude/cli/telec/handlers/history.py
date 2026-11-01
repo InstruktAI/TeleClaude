@@ -7,6 +7,7 @@ from teleclaude.cli.telec import flags as F
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import HISTORY_SEARCH, HISTORY_SHOW
+from teleclaude.constants import HistoryComputerSelector
 from teleclaude.history.search import display_combined_history, parse_agents
 from teleclaude.utils.transcript_discovery import SessionId
 
@@ -63,7 +64,7 @@ def _handle_history_search(args: list[str]) -> None:
         agents,
         search_term=" ".join(terms),
         limit=limit,
-        computers=list(parsed.values(F.FLAG_COMPUTER_MANY)) or None,
+        computers=list(parsed.values(F.FLAG_COMPUTER_MANY)) or [HistoryComputerSelector.ALL],
         include_workers=parsed.has(F.FLAG_HISTORY_INCLUDE_FOCUSED) or parsed.has(F.FLAG_HISTORY_INCLUDE_WORKERS_ALIAS),
         identity=identity,
         project=project,
