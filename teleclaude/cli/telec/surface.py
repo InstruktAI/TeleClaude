@@ -1673,6 +1673,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 examples=[
                     "telec history search config wizard",
+                    "telec history search config wizard --computer all",
+                    "telec history search config wizard --computer local",
                     "telec history search --agent claude,codex bug fix",
                     "telec history search --include-focused tui",
                 ],

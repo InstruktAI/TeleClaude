@@ -23,11 +23,13 @@ from teleclaude.cli.telec.help import (
 )
 from teleclaude.cli.telec.surface import (
     CLI_SURFACE,
+    HISTORY_SEARCH,
     CommandAuth,
     CommandDef,
     TelecCommand,
 )
 from teleclaude.cli.telec.surface_types import admits_any_caller
+from teleclaude.constants import HistoryComputerSelector
 
 from . import flags as F
 
@@ -149,6 +151,8 @@ def _handle_cli_command(argv: list[str], clear: ClearanceGate) -> None:
     parsed = parse_command_args(node, remainder)
     target_computer = parsed.value(F.FLAG_COMPUTER) if F.FLAG_COMPUTER in node.flags else None
     targets = parsed.values(F.FLAG_COMPUTER_MANY) if F.FLAG_COMPUTER_MANY in node.flags else ()
+    if HistoryComputerSelector.ALL in targets or (node is HISTORY_SEARCH and not targets):
+        targets = (None, *targets) if targets else (None, HistoryComputerSelector.ALL)
     direct_conversation = any(flag in node.flags and parsed.has(flag) for flag in _DIRECT_CONVERSATION_FLAGS)
     auth = _effective_auth(node, parsed)
     if auth is None or not admits_any_caller(auth.caller_independent, node.desk):
