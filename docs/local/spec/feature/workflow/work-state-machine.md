@@ -42,6 +42,12 @@ and the run session carries every firing line verbatim
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. `origin/main` is also the only baseline the worktree references afterwards: an agent inside `trees/<slug>` does not name the local `main` branch in any git invocation, for any subcommand. A single-flight lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session identity is preserved across phase handlers so the finalize Phase records who owns the handoff. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
+<!-- planned:work-entry-merge-skips-silently -->
+
+When work entry cannot perform the origin/main merge on an existing worktree that holds no finalize-ready claim, because the worktree holds uncommitted changes, origin/main cannot be fetched, or the worktree repository cannot be read, every instruction it returns states that origin/main was not merged, why, and the worktree HEAD the directed work proceeds on.
+
+<!-- /planned:work-entry-merge-skips-silently -->
+
 Before the `prepared → build_started` handoff and BEFORE worktree preparation, work calls the shared drift derivation (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation happens ahead of worktree creation: slug resolution and non-worktree preconditions happen first, then the workflow state is read, then drift derivation is called against repo-root state. The work state machine owns the work-entry drift path end-to-end. When a tracked artifact's collapsed drift status is `pending`, work does NOT mutate work-state and does NOT create or touch a worktree; its bounce returns a script that dispatches the `sdlc/procedure/lifecycle/prepare/drift-analyze` worker and tells the orchestrator to re-enter `telec todo work {slug}` once the analyzer idles — this path never enters the prepare machine. The analyzer stamps its `--drift-reviewed` verdict and drives no transition. For bug-kind Todos, work-entry drift evaluates the approved `implementation-plan`; bug `input` is frozen, and `diagnosis` is consumed only through the plan's upstream diagnosis digest. Work entry never bounces directly on `input` or `diagnosis` drift. On re-entry the work machine reads the stamped verdict. A `cosmetic` verdict is non-blocking: work proceeds to worktree creation and build dispatch. A `substantive` verdict returns the Todo to preparation through the lifecycle runner: the work machine releases the Todo's lifecycle claim, and the platform ends the slug's work-lane sessions — every session the calling work orchestrator started, then the work orchestrator itself — only after the machine has answered the orchestrator's call. The worktree, local and remote branch, workspace directory, and build commits remain. No session changes lanes: the lifecycle runner dispatches a fresh prepare orchestrator, which re-derives the affected artifact; at `prepared` that orchestrator ends like any other and releases the claim, and the lifecycle runner dispatches a fresh work orchestrator, which continues the existing build against the changed plan (UC-WSM10). Neither lifecycle machine adopts a session that holds the slug in the other lane; each refuses it instead. The cosmetic path attempts no artifact write, so it never contends with the write-authority guard.
 
 ## Canonical fields
@@ -380,19 +386,6 @@ When P calls "telec todo work my-feature"
 Then the work machine refuses without adopting P into the work lane, and P's role, title, and claim are unchanged
 And the refusal names the sanctioned path: P completes its prepare lifecycle, whose terminal releases the claim, and the lifecycle runner dispatches a fresh work orchestrator
 ```
-
-<!-- planned:work-entry-merge-skips-silently -->
-
-#### UC-WSM21: Work entry reports an origin/main merge it could not perform
-
-```gherkin
-Given a work orchestrator agent re-enters work for a Todo whose worktree exists and which holds no finalize-ready claim
-When work entry cannot merge origin/main into that worktree because the worktree holds uncommitted changes, origin/main cannot be fetched, or the worktree repository cannot be read
-Then the instruction work entry returns states that origin/main was not merged and why
-And states that the work it directs proceeds on the worktree's current HEAD without the latest origin/main
-```
-
-<!-- /planned:work-entry-merge-skips-silently -->
 
 ### Cross-context references
 
