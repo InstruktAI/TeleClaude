@@ -100,7 +100,7 @@ Each session has at most one worker task (`asyncio.create_task`). Workers are pe
 2. `claim_inbound(row_id, now, lock_cutoff)` — CAS UPDATE: set `locked_at`, `status='processing'`
 3. `deliver_fn(row)` — call the delivery function (raises on failure)
 4. `mark_inbound_delivered(row_id, now)` — set `status='delivered'`
-5. On exception: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry
+5. On an exception other than a session rejection: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry, until the row's attempts run out (Retry Policy); a rejection ends the row `expired`
 
 <!-- change:wake-partial-submit-duplicated-unsubmitted -->
 
@@ -108,7 +108,7 @@ Each session has at most one worker task (`asyncio.create_task`). Workers are pe
 2. `claim_inbound(row_id, now, lock_cutoff)` — CAS UPDATE: set `locked_at`, `status='processing'`
 3. `deliver_fn(row)` — call the delivery function (raises on failure)
 4. `mark_inbound_delivered(row_id, now)` — set `status='delivered'`
-5. On an exception step 6 does not cover: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry, until the row's attempts run out (Retry Policy)
+5. On an exception other than a session rejection or a step 6 failure: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry, until the row's attempts run out (Retry Policy); a rejection ends the row `expired`
 6. On a placement-uncertain failure — the delivery function reports that placement of platform-authored text into an active agent's pane had begun when the attempt failed — the row ends `expired` with that error, its terminal cause reaches the row's producer, and it is never retried, because a repeated placement can leave the same occurrence in the composer twice (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`, Target validation and delivery outcomes). Conversation text is never reported placement-uncertain; its failures follow step 5
 
 <!-- /planned-change:wake-partial-submit-duplicated-unsubmitted -->
