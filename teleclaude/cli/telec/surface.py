@@ -184,7 +184,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
             ),
             "coordinate": CommandDef(
-                desc="Adopt this session as the project's single coordinator (refuses if one is live)",
+                desc="Adopt this session as the project's single coordinator (only when a person asks for one; an agent may carry out that request; refuses if one is live)",
                 flags=[F.FLAG_HELP],
                 auth=CommandAuth(capability=Capability.SESSION_OBSERVE, human=_HR_MEMBER),
             ),

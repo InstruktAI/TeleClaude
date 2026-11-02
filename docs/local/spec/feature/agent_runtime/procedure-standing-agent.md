@@ -216,5 +216,5 @@ person's folder carries no human identity and acts as no person.
 
 - docs/local/adr/0110-an-event-activated-procedure-runs-where-its-event-originated.md — why the agent runs on the emitting computer in the home its event's origin names.
 - docs/local/spec/feature/agent_runtime/company-scoped-session-context.md — how a session's company and origin are established, carried, and published.
-- docs/local/spec/feature/agent_runtime/coordinator-role-acquisition.md — the other singleton in this context: acquired by any agent session, one per project instance, enforced at an acquisition door rather than by activation.
+- docs/local/spec/feature/agent_runtime/coordinator-role-acquisition.md — the other singleton in this context: human-directed, one per project instance, enforced at an acquisition door rather than by activation.
 - docs/local/spec/feature/agent_runtime/scheduled-agent-command-dispatch.md — the schedule-driven sibling, which creates a session per run rather than keeping one standing.

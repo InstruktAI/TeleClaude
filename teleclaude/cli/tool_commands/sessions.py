@@ -92,7 +92,7 @@ def handle_sessions(args: list[str]) -> None:
       result      Send a formatted result to the user (implicit session)
       file        Send a file to the user (implicit session)
       escalate    Escalate a visitor to everyone in the desk's scope in its escalation thread (implicit session)
-      coordinate  Adopt this session as the project's single coordinator (refuses if one is live)
+      coordinate  Adopt this session as the project's single coordinator (only when a person asks for one; an agent may carry out that request; refuses if one is live)
     """
     if not args or args[0] in ("-h", "--help"):
         _sessions_help()
@@ -157,7 +157,7 @@ Subcommands:
   result       Send a formatted result to the user (implicit session)
   file         Send a file to the user (implicit session)
   escalate     Escalate a visitor to everyone in the desk's scope in its escalation thread (implicit session)
-  coordinate   Adopt this session as the project's single coordinator (refuses if one is live)
+  coordinate   Adopt this session as the project's single coordinator (only when a person asks for one; an agent may carry out that request; refuses if one is live)
 
 Run 'telec sessions <subcommand> --help' for subcommand-specific help."""
     )
@@ -753,7 +753,7 @@ def handle_sessions_result(args: list[str]) -> None:
 
 
 def handle_sessions_coordinate(args: list[str]) -> None:
-    """Adopt this session as the project's single coordinator (refuses if one is live)"""
+    """Adopt this session as the project's single coordinator (only when a person asks for one; an agent may carry out that request; refuses if one is live)"""
     if any(argument in _COORDINATE_HELP_FLAGS for argument in args):
         print(handle_sessions_coordinate.__doc__ or "")
         return
