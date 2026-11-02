@@ -16,7 +16,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import InboundQueueRow, db
-from teleclaude.core.inbound_errors import InboundMessageHeldError, SessionMessageRejectedError
+from teleclaude.core.inbound_errors import (
+    InboundMessageHeldError,
+    InboundPlacementUncertainError,
+    SessionMessageRejectedError,
+)
 from teleclaude.core.inbound_types import InboundMessageType
 from teleclaude.core.injected_text import (
     InjectedInputAuthority,
@@ -80,6 +84,7 @@ class DeliveryTerminalCause(StrEnum):
 
     RETRY_EXHAUSTED = "retry_exhausted"
     HOLD_EXPIRED = _HELD_MESSAGE_EXPIRED_REASON
+    PLACEMENT_UNCERTAIN = "placement_uncertain"
 
 
 class HoldNoticeTerminalDisposition(StrEnum):
@@ -512,6 +517,27 @@ class InboundQueueManager:
                 source_feature=row["source_feature"],
                 text_kind=row["text_kind"],
             )
+        except InboundPlacementUncertainError as exc:
+            # Placement had begun, so its effect on the composer is unknown; placing the
+            # same occurrence again would add a second copy beside the first, so it ends here.
+            await db.mark_inbound_retry_exhausted(
+                row_id,
+                error=str(exc),
+                now_iso=datetime.now(UTC).isoformat(),
+            )
+            logger.info(
+                _INBOUND_DELIVERY_COMMITTED_EVENT,
+                outcome="failed",
+                reason=DeliveryTerminalCause.PLACEMENT_UNCERTAIN.value,
+                inbound_row_id=row_id,
+                target_session_id=session_id,
+                occurrence_key=row["occurrence_key"],
+                source_feature=row["source_feature"],
+                text_kind=row["text_kind"],
+                attempts=row["attempt_count"] + 1,
+            )
+            await self._notify_terminal_cause(row, DeliveryTerminalCause.PLACEMENT_UNCERTAIN)
+            return _NO_WAIT_S
         except Exception as exc:
             error_str = str(exc)
             attempt = row["attempt_count"] + 1
