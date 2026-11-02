@@ -186,9 +186,10 @@ How the store maps onto the repository is owned by
 <!-- planned:github-turn-mirror -->
 
 - **Conversation:** every session the workflow starts for a repository work
-  item has its conversation on that item: a turn completed while the item had
-  an open pull request on that pull request, every other turn on its issue.
-  Each completed turn is one comment, written
+  item has its conversation on that item, posted by the computer that ran the
+  session: a turn posted while the item has an open pull request on that pull
+  request, every other turn on its issue. Each completed turn is one comment,
+  written
   by the App mapped to the session's role
   (`local/projects/teleclaude/spec/teleclaude-config`): the reviewer App for a
   review role, the author App for every other role, never the App that writes
@@ -199,20 +200,18 @@ How the store maps onto the repository is owned by
   received and the agent's reply, without tool activity or reasoning. A
   person's comment that reached the session from GitHub is written like any
   other input; a message a person gave the session anywhere else is not
-  written, and the turn notes only that the person spoke. Turns appear in the
-  order they completed across all of the item's sessions, each exactly once,
-  except that a turn one computer still owed when the item's work moved to
-  another computer appears when it is posted, after later turns. A turn too
-  large for one comment continues in the next. Before a turn is
+  written, and the turn notes only that the person spoke. Each turn appears
+  once; a session's turns appear in the order it completed them, and the
+  turns of sessions on different computers appear in the order those
+  computers post them. A turn too large for one comment continues in the
+  comments that follow it. Before a turn is
   written, every secret the platform holds is masked, and credential-like
   strings and personal data are removed as far as detection recognizes them;
   a turn whose masking or detection cannot complete appears only as
   `[session:<id> role:<role> action:turn turn:<n> at:<time> withheld]`, with
-  no content. The project's
-  conversation starts at the moment recorded by the first
-  `[action:conversation-start at:<time>]` entry on its ledger issue; turns
-  completed before it are not written. The conversation is never part of the
-  record, and writing it never holds up a session.
+  no content. Only sessions created after the capability is live on their
+  computer are written. The conversation is never part of the record, and
+  writing it never holds up a session.
 
 <!-- /planned:github-turn-mirror -->
 
@@ -324,8 +323,8 @@ Scenario: A collaborator follows a build and its reviews on GitHub
 Scenario: A collaborator reads how the agents worked an item
   Given a GitHub-backed project with an item the workflow is preparing or building
   When a collaborator opens the item's issue, or its pull request once the build has started
-  Then they read every turn of the item's sessions in the order the turns completed
-  And each turn names its session and role, what the session was asked and what it answered
+  Then they read the turns of the item's sessions, each session's turns in the order it completed them
+  And each turn names its session, role and completion time, what the session was asked and what it answered
   And each turn is written by the identity of the session's role, not by the record's
 
 Scenario: A turn that cannot be cleaned is withheld
@@ -389,8 +388,11 @@ Scenario: A turn that cannot be cleaned is withheld
   conversation only as far as detection recognizes them: what it misses is
   published with the turn. Secrets the platform holds are always masked.
 - A session's turn appears on GitHub after it completes, and later than that
-  while GitHub is unreachable or its request budget is spent. A turn that a
-  computer could not post before the item's work moved to another computer
-  appears after the turns completed after it, showing when it completed.
+  while its computer cannot reach GitHub or GitHub has refused its requests
+  for a time. Turns posted by different computers for one item interleave in
+  the order they are posted, and a turn whose posting was interrupted
+  part-way may have other comments between its parts; each comment shows its
+  session, turn number and completion time. A computer that is gone for good
+  leaves its unposted turns unposted.
 
 <!-- /planned:github-turn-mirror -->
