@@ -381,6 +381,19 @@ Then the work machine refuses without adopting P into the work lane, and P's rol
 And the refusal names the sanctioned path: P completes its prepare lifecycle, whose terminal releases the claim, and the lifecycle runner dispatches a fresh work orchestrator
 ```
 
+<!-- planned:work-entry-merge-skips-silently -->
+
+#### UC-WSM21: Work entry reports an origin/main merge it could not perform
+
+```gherkin
+Given a work orchestrator agent re-enters work for a Todo whose worktree exists and which holds no finalize-ready claim
+When work entry cannot merge origin/main into that worktree because the worktree holds uncommitted changes, origin/main cannot be fetched, or the worktree repository cannot be read
+Then the instruction work entry returns states that origin/main was not merged and why
+And states that the work it directs proceeds on the worktree's current HEAD without the latest origin/main
+```
+
+<!-- /planned:work-entry-merge-skips-silently -->
+
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, reviewer, deferrals worker, or finalizer session.
