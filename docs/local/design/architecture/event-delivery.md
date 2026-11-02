@@ -378,6 +378,12 @@ ordering guarantee for these separate transports.
 - A consumer group that stops advancing while a backlog is forwarded can have
   unread entries trimmed out of the stream's retained window; it recovers what
   the window still holds, as for any slow consumer.
+- A Redis's since is the moment the running daemon first found it not
+  answering. A daemon that starts while a Redis is away reports that Redis
+  away since its own start.
+- The local Redis writes its append-only file once a second, so a crash of that
+  Redis, rather than a stop or restart, can lose the events held in the last
+  second before it.
 
 <!-- /planned:cluster-redis-outage-store-and-forward -->
 
