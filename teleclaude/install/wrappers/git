@@ -419,9 +419,9 @@ case "$_effective_wt" in
         ;;
 esac
 
-# Detached-root door. A refusal names its door: when a branch checkout or
-# switch is refused in a repository's main checkout whose HEAD is detached,
-# print the one sanctioned way back to `main`. Main checkout means the Git
+# Detached-root door. When a branch checkout or switch is refused in a
+# repository's main checkout whose HEAD is detached, print the one command that
+# reattaches HEAD to `main`. Main checkout means the Git
 # directory is the common directory, so `.git` is a directory and the checkout
 # is not a linked worktree (slug, integration, installed release): moving
 # `main` there would be wrong, so the door prints nothing. Both probes call
