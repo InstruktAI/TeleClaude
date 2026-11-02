@@ -1,5 +1,5 @@
 ---
-description: Human-directed acquisition of the single coordinator role for one project instance, including visible adoption, sealed refusal, and procedure entry.
+description: Acquisition of the single coordinator role for one project instance by any agent session, at a person's or an agent's direction, including visible adoption, sealed refusal, and procedure entry.
 visibility: internal
 ---
 
@@ -8,9 +8,9 @@ visibility: internal
 ## What it is
 
 Coordinator role acquisition is the agent-facing door through which a live
-session, acting on human direction, becomes the sole coordinator for one
-project instance. A project instance is one project root served by one
-computer's daemon. Acquisition makes the role visible in the session fleet and
+session, acting on a person's or another agent's direction, becomes the sole
+coordinator for one project instance. A project instance is one project root
+served by one computer's daemon. Acquisition makes the role visible in the session fleet and
 directs the adopted agent into the coordination procedure; it does not create
 work, select a todo, or start another session.
 
@@ -19,18 +19,20 @@ sessions may reach the door, but only one live session holds the role. A
 refused session receives the complete next action in the refusal response,
 while the incumbent remains untouched.
 
-The command help states that acquisition is human-directed and does not invite
-an agent to acquire the role autonomously.
+Any agent session may acquire the role, whether a person or another agent
+directed it. The singleton is the guard, not the source of the direction: an
+agent that finds a project without a live coordinator may start a session that
+acquires it, and a second acquirer is refused whoever sent it.
 
 ## Canonical fields
 
 ### Use cases
 
-#### UC-CRA1: A person establishes the project's coordinator
+#### UC-CRA1: A person or an agent establishes the project's coordinator
 
 ```gherkin
 Scenario: Establish the coordinator for an uncoordinated project
-  Given an agent acts on a person's direction for a project instance with no live coordinator
+  Given an agent acts on a person's or another agent's direction for a project instance with no live coordinator
   When the agent acquires the coordinator role
   Then it becomes the sole live coordinator for that project
   And the session fleet shows its coordinator role and title
@@ -38,7 +40,7 @@ Scenario: Establish the coordinator for an uncoordinated project
 
 Scenario: Refuse a second coordinator without disturbing the incumbent
   Given one live agent session coordinates a project instance
-  And another session acting on human direction does not hold that role
+  And another session acting on a person's or an agent's direction does not hold that role
   When the second session attempts to acquire the role
   Then it is refused with the sanctioned instruction to end itself if started only for coordination
   And its existing role and title remain unchanged
