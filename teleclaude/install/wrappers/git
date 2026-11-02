@@ -419,6 +419,36 @@ case "$_effective_wt" in
         ;;
 esac
 
+# Detached-root door. When a branch checkout or switch is refused in a
+# repository's main checkout whose HEAD is detached, print the one command that
+# reattaches HEAD to `main`. Main checkout means the Git
+# directory is the common directory, so `.git` is a directory and the checkout
+# is not a linked worktree (slug, integration, installed release): moving
+# `main` there would be wrong, so the door prints nothing. Both probes call
+# the real binary directly (read-only, no config side effects). The command is
+# addressed to the effective checkout, so it acts on that checkout from any
+# working directory. Prints to stderr; never changes the refusal's exit status.
+_print_detached_root_door() {
+    local _gd _cd _co
+    _gd="$("$_real_git_bin" -C "$_effective_wt" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+    _cd="$("$_real_git_bin" -C "$_effective_wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    [ -n "$_gd" ] && [ "$_gd" = "$_cd" ] || return 0
+    "$_real_git_bin" -C "$_effective_wt" symbolic-ref -q HEAD >/dev/null 2>&1 && return 0
+    printf -v _co '%q' "$_effective_wt"
+    cat >&2 <<MSG
+
+This checkout's HEAD is detached. To return it to 'main' without touching the
+index or working tree, run this single command (any working directory). It
+applies only when 'main' is an ancestor of HEAD, and refuses, changing nothing,
+if either ref moved since it was read:
+
+  m=\$(git -C $_co rev-parse refs/heads/main) h=\$(git -C $_co rev-parse HEAD) && git -C $_co merge-base --is-ancestor "\$m" "\$h" && printf 'start\nupdate refs/heads/main %s %s\nsymref-update HEAD refs/heads/main oid %s\nprepare\ncommit\n' "\$h" "\$m" "\$h" | git -C $_co update-ref -m 'reattach HEAD to main' --stdin
+
+If 'main' is not an ancestor of HEAD the histories have diverged and this door
+does not apply.
+MSG
+}
+
 # A single token's exact-string check against the bare local-`main` forms.
 # Kept apart from the scan below so the two-/three-dot range check can apply
 # it to each endpoint without duplicating the form list.
@@ -543,9 +573,15 @@ fi
 # ── CODE: destructive operations blocked for all roles, no override ─────────
 if [ "$_code_enabled" -eq 1 ]; then
 case "$_subcmd" in
-    clean|switch)
+    clean)
         _log_block "destructive_${_subcmd}"
         echo "ERROR: 'git $_subcmd' is a destructive operation and is prohibited." >&2
+        exit 1
+        ;;
+    switch)
+        _log_block "destructive_${_subcmd}"
+        echo "ERROR: 'git $_subcmd' is a destructive operation and is prohibited." >&2
+        _print_detached_root_door
         exit 1
         ;;
     revert)
@@ -690,6 +726,8 @@ MSG
 fi
 
 if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "checkout" ]; then
+    # Branch switch is refused for every role; in a detached main checkout the
+    # refusal also names the way back to `main` (_print_detached_root_door).
     _has_separator=0
     for _carg in "$@"; do
         [ "$_carg" = "--" ] && _has_separator=1
@@ -697,6 +735,7 @@ if [ "$_code_enabled" -eq 1 ] && [ "$_subcmd" = "checkout" ]; then
     if [ "$_has_separator" -eq 0 ]; then
         _log_block checkout_branch_switch
         echo "ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed." >&2
+        _print_detached_root_door
         exit 1
     fi
     # File-scoped checkout (-- present). Require --confirmed when (a) inside
