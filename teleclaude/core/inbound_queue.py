@@ -80,6 +80,7 @@ class DeliveryTerminalCause(StrEnum):
 
     RETRY_EXHAUSTED = "retry_exhausted"
     HOLD_EXPIRED = _HELD_MESSAGE_EXPIRED_REASON
+    PLACEMENT_UNCERTAIN = "placement_uncertain"
 
 
 class HoldNoticeTerminalDisposition(StrEnum):
