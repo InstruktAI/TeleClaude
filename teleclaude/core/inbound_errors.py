@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from teleclaude.core.tmux_io import UserTurnDeliveryStage
 
 _INBOUND_MESSAGE_HELD_ERROR = "Input held for session {session_id}: {reason}"
 
@@ -64,6 +68,21 @@ class InboundMessageHeldError(RuntimeError):
         self.session_id = session_id
         self.reason = reason
         super().__init__(_INBOUND_MESSAGE_HELD_ERROR.format(session_id=session_id, reason=reason.value))
+
+
+class InboundPlacementUncertainError(RuntimeError):
+    """Terminal failure of a delivery whose input placement had already begun.
+
+    Placing the same occurrence again would paste a second copy beside whatever the first
+    attempt left in the composer, so the queue ends the row instead of retrying it.
+    """
+
+    def __init__(self, *, session_id: str, stage: UserTurnDeliveryStage) -> None:
+        self.session_id = session_id
+        self.stage = stage
+        super().__init__(
+            f"Input placement had begun for session {session_id} when delivery failed at stage {stage.value}"
+        )
 
 
 class UnidentifiableCallerError(RuntimeError):
