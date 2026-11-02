@@ -331,11 +331,11 @@ workflow.
 <!-- planned:github-turn-mirror -->
 
 **Conversation.** The adapter module publishes the completed turns of the
-sessions working a repository work item on the pull request the item had open
-when each turn completed, otherwise on its issue, as the role Apps, sent by
-the fleet's master. How the capturing computers, the master and the runtime
-relate is `local/projects/teleclaude/design/architecture/work-item-conversation`;
-what a reader sees is
+sessions working a repository work item on that item's pull request or issue,
+as the role Apps, from the computer that ran each session
+(ADR-0154). How the runtime, the publisher and GitHub relate is
+`local/projects/teleclaude/design/architecture/work-item-conversation`; what a
+reader sees is
 `local/projects/teleclaude/spec/feature/workflow/github-work-record`
 (Conversation). The record and the workflow state are unchanged. The adapter
 module decides publication as follows.
@@ -346,26 +346,13 @@ module decides publication as follows.
   `prepare-orchestrator`, `work-orchestrator`, `intaker`, `architect`,
   `planner`, `prd-reviewer`, `architecture-reviewer`, `plan-reviewer`,
   `build-reviewer`, `builder`, `finalizer`, `diagnoser`, `drift-analyzer` and
-  `deferrer`; and the turn completed at or after the project's conversation
-  start. A session with no role, any other role, or no working item is never
-  published.
-- **Conversation start.** A computer that runs the publisher for a project
-  whose ledger issue holds no conversation-start entry appends one, as the
-  platform App, carrying that moment: a platform comment of its own kind,
-  appended and never edited, opening with
-  `[action:conversation-start at:<time>]`, with no ledger marker, which
-  stores without this capability read past. The entry the ledger issue's
-  comment order puts first is the project's conversation start, on every
-  computer and after every rebuild, and the lower bound of eligibility. A
-  project without a ledger issue publishes nothing until the store opens one.
-- **Destination.** A turn goes on the item's pull request when the item had
-  an open pull request at the turn's completion: opened at or before it and
-  not closed by then. Every other turn goes on the item's issue, including a
-  turn completed during the build before a delayed reflection opened the pull
-  request. The destination is decided once, when the turn is captured, from
-  the opening and closing times GitHub reports for the pull request, which a
-  rebuilt working copy finds again with the pull request itself, and it never
-  changes when the pull request opens or closes before the turn is posted.
+  `deferrer`; and the session was created on this computer after its GitHub
+  conversation store started. A session with no role, any other role, or no
+  working item is never published.
+- **Destination.** A turn goes on the item's pull request when the working
+  copy holds that pull request open at the moment the turn's first comment is
+  posted, otherwise on the item's issue; the rest of the turn follows its
+  first comment there.
 - **Identity.** A review role, resolved through its composite role, posts as
   the App `github.roles` maps for `reviewer`. Every other eligible role posts
   as the App mapped for that role when one is, and otherwise as the App
@@ -396,74 +383,34 @@ module decides publication as follows.
   raises, is captured as a withheld turn and nothing of its content leaves
   the computer.
 
+- **Order.** A computer posts its captured turns one at a time in completion
+  order, all of a turn's comments before the next turn's, and a turn that
+  cannot be posted holds the turns after it.
+
 **GitHub conversation store.** Each computer keeps a store of its own in the
 daemon's store registry
 (`local/projects/teleclaude/design/architecture/database`), apart from the
-working copy (`sdlc/policy/state-storage`), which only its daemon writes. On
-every computer it holds the turns the computer captured from the sessions it
-hosts, protected and split, never raw transcript content, with which of their
-comments are on GitHub, and for each session the last turn taken from the
-runtime. On the master it also holds each turn handed over to it that it has
-begun and not finished posting, with its comments not yet on GitHub, and the
-request budget state below. A captured turn leaves the store once its last
-comment is on GitHub; on the master, a handed-over turn leaves it at the same
-point. A session's last-taken turn leaves it once the session has been closed
-longer than the runtime retention window and none of its turns remains. An
-append time leaves it once older than the longest budget window, a pause once
-it has ended, and a notice once delivered or past its time. A lost store is
-recovered from GitHub and the runtime
-(`local/projects/teleclaude/design/architecture/work-item-conversation`,
-Recovering position).
-
-**GitHub limit notice store.** Each computer keeps a second store of its own
-in the daemon's store registry, written only by the command-line and
-integration processes that make GitHub requests on that computer. Such a
-process that receives a rate-limit response records it there with the time
-it names; a notice past its time is removed by the next process that writes.
-The daemon reads the notice store at start and before each conversation
-request it admits or notice it delivers, never writes it, and records in its
-conversation store each notice it has taken.
+working copy (`sdlc/policy/state-storage`), which only its daemon writes. It
+holds when it started, the turns the computer captured from the sessions it
+runs, protected and split, never raw transcript content, with which of their
+comments are on GitHub and whether one may have been sent without its reply,
+for each session the last turn taken from the runtime, and the end of any
+conversation pause with the length of the last unnamed one. A captured turn
+leaves the store once its last comment is on GitHub. A session's last-taken
+turn leaves it once the session has been closed longer than the runtime
+retention window and none of its turns remains. A pause leaves it once it has
+ended.
 
 **GitHub request budget.** Every GitHub request the adapter module makes runs
-on its one I/O runtime. Record work, meaning the write path, reflections,
-questions, reviews, rebuild and refresh, is never held by the conversation's
-budget and keeps its own refusal and retry contract. Conversation requests,
-the reads and appends for turns, are sent only by the fleet's master computer
-(`local/projects/teleclaude/spec/teleclaude-config`, `computer.is_master`),
-which every other computer hands its captured turns to. The master admits
-each conversation request before sending it:
-
-- **Never the record's identity.** Turn comments and the reads for them go
-  out only as role Apps, never as the platform App every refusable record
-  write uses. The one conversation-start entry per project goes out as the
-  platform App, once, as record work, from the computer that appends it. On a
-  role App's installation a conversation request is admitted only while the
-  remaining count and reset time of that installation's latest response leave
-  a fifth of its limit for the pull request and review reflections that App
-  also writes.
-- **One share for the fleet.** The master counts the conversation appends it
-  sent over the last minute and the last hour and admits an append only while
-  that count stays within half of GitHub's documented content-creation limits.
-- **A limit response stops the conversation.** A rate-limit response that
-  reaches the master, from its own request, from a notice in its notice
-  store, or passed on by another computer, pauses every conversation request
-  until the time the response names, however far off, or a minute when it
-  names none, doubling on each repeated unnamed limit up to an hour. A
-  computer other than the master that receives one, in its daemon or in its
-  notice store, tells the master over the same relay, with that time, keeps
-  the notice durably while the master cannot be reached, and delivers it once
-  the relay answers, unless its time has passed by then. A turn handed over
-  during the pause is answered deferred until its end.
-- **The budget survives a restart.** The master records the time of each
-  conversation append it sends, the end of any pause and the length of the
-  last unnamed pause in its conversation store, and reads them before it
-  admits each conversation request.
-- **A master without a record waits out the window.** A computer that
-  becomes the master holds none of its predecessor's record, and a master
-  whose conversation store is lost holds none of its own, so it admits no
-  conversation request until an hour after it became master or opened a new
-  store, the longest budget window; a pause still running after that
-  reaches it as the response to its first request.
+on its one I/O runtime, the conversation's included, one wire request at a
+time. Record work, meaning the write path, reflections, questions, reviews,
+rebuild and refresh, is never held by a conversation pause and keeps its own
+refusal and retry contract. Turn comments and the reads for them go out only
+as role Apps, never as the platform App every refusable record write uses.
+When a conversation request receives a rate-limit response, the computer
+sends no conversation request until the time the response names, or a minute
+when it names none, doubling on each repeated unnamed limit up to an hour;
+the pause is kept in the conversation store and holds across a restart.
 
 <!-- /planned:github-turn-mirror -->
 
