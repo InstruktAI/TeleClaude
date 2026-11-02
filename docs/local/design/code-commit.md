@@ -185,8 +185,6 @@ inspection included. There is no `--confirmed` form and no override variable.
 `origin/main` is the only main-shaped ref a slug worktree may name; a pathspec
 after `--` is never read as a ref.
 
-<!-- planned:detached-canonical-root-no-recovery-door -->
-
 **The detached-root door.** In a repository's main checkout — never a linked
 worktree, so no `trees/` worktree and no installed release — a branch
 `checkout` or `switch` refused while HEAD is detached names the sanctioned way
@@ -201,8 +199,6 @@ refusal prints the exact command, addressed to the checkout the refused
 invocation named, so it acts on that checkout from any working directory. Where
 `main` is not an ancestor of HEAD the histories have diverged, the refusal says
 so, and the door does not apply.
-
-<!-- /planned:detached-canonical-root-no-recovery-door -->
 
 **The integration-worktree extras** matter because the worktree's index
 and working tree are owned by the state machine's
@@ -597,8 +593,6 @@ next commit publishes again. A refusal because `origin` holds commits the
 worktree never integrated repeats on every commit until the branch
 integrates them; the report names that reason each time.
 
-<!-- planned:detached-canonical-root-no-recovery-door -->
-
 **Detached repository root.** A repository's main checkout has its HEAD
 detached while local `main` stays behind it, so the checkout is not on `main`.
 Post-commit maintenance skips every commit made there
@@ -609,8 +603,6 @@ branch `checkout` or `switch` there is refused with the detached-root door, and
 applying the door restores the posture without touching any session's work.
 When `main` is not an ancestor of HEAD the door does not apply; reconciling
 diverged histories in the main checkout is outside it.
-
-<!-- /planned:detached-canonical-root-no-recovery-door -->
 
 ## See also
 
