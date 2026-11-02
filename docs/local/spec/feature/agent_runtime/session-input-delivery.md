@@ -202,8 +202,8 @@ inspection or recovery.
 
 Once queue-backed platform-authored text has begun to be placed into a running
 agent's composer, a failure of that delivery attempt is final: the occurrence ends
-as a failed delivery, its producer receives the terminal outcome, and the platform
-neither places it again nor submits anything on its behalf. What the begun
+as a failed delivery with the same terminal notice an exhausted delivery gets, and
+the platform neither places it again nor submits anything on its behalf. What the begun
 placement left in the composer is uncertain and stays as it is, so the platform
 never adds a second copy of the occurrence. Conversation text keeps its own path,
 waiting on an occupied composer.
