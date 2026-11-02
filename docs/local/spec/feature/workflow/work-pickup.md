@@ -56,8 +56,10 @@ Pickup evaluates a project when one of these happens:
   starts, and how many todos it drives at once. Every project the setting
   governs is evaluated.
 - **A naming of this computer as the project's active computer:** confirmed
-  completion wakes pickup directly. A registered naming whose remote effect
-  remains unknown retains a project-specific recovery retry. Such an
+  completion wakes pickup directly. Unresolved naming retains a retry while
+  assignment blocks otherwise-ready dispatch or claim reconciliation. Its
+  target continues adopting delivered work-record changes, and dormant
+  uncertainty alone causes no periodic pass. Such an
   evaluation grants no admission authority
   (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
 - **A scheduled task coming due:** its one-shot instant, or each occurrence of
@@ -88,9 +90,9 @@ of the kinds above, pickup does not run and reads no project's work.
 
 ## Known caveats
 
-- An unknown naming outcome can retain its project-specific retry
-  indefinitely. A full naming register refuses another naming before changing
-  GitHub; unresolved records are not evicted to admit it.
+- Unknown naming effects can leave standing recovery uncertainty indefinitely.
+  Namings of the same repository and target share current recovery state;
+  earlier uncertainty does not prevent another deliberate naming.
 - A target that cannot reach the cluster register cannot recover a naming it
   has not learned until connectivity returns. Existing local recovery
   obligations continue meanwhile.
