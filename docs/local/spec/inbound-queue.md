@@ -82,11 +82,24 @@ pending/failed/processing → expired (session closed)
 
 Each session has at most one worker task (`asyncio.create_task`). Workers are per-session FIFO drains:
 
+<!-- planned-change:wake-partial-submit-duplicated-unsubmitted -->
+
 1. `fetch_inbound_pending(session_id, limit=1, now, lock_cutoff)` — fetch next eligible row
 2. `claim_inbound(row_id, now, lock_cutoff)` — CAS UPDATE: set `locked_at`, `status='processing'`
 3. `deliver_fn(row)` — call the delivery function (raises on failure)
 4. `mark_inbound_delivered(row_id, now)` — set `status='delivered'`
 5. On exception: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry
+
+<!-- change:wake-partial-submit-duplicated-unsubmitted -->
+
+1. `fetch_inbound_pending(session_id, limit=1, now, lock_cutoff)` — fetch next eligible row
+2. `claim_inbound(row_id, now, lock_cutoff)` — CAS UPDATE: set `locked_at`, `status='processing'`
+3. `deliver_fn(row)` — call the delivery function (raises on failure)
+4. `mark_inbound_delivered(row_id, now)` — set `status='delivered'`
+5. On exception: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry
+6. On a placement-uncertain failure — the delivery function reports that its input placement into the pane had begun when it failed — the row ends `expired` with that error, its terminal cause reaches the row's producer, and it is never retried, because a repeated placement can leave the same occurrence in the composer twice (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`, Target validation and delivery outcomes)
+
+<!-- /planned-change:wake-partial-submit-duplicated-unsubmitted -->
 
 Workers self-terminate when no eligible rows remain. `_ensure_worker` spawns a new worker if one is not already running.
 
