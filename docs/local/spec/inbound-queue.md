@@ -72,11 +72,23 @@ file input are the queue's active message types.
 
 ### Status Lifecycle
 
+<!-- planned-change:wake-partial-submit-duplicated-unsubmitted -->
+
 ```
 pending → processing → delivered
                     ↘ failed → pending (retry) → ...
-pending/failed/processing → expired (session closed)
+pending/failed/processing → expired (session closed or unavailable, retries exhausted)
 ```
+
+<!-- change:wake-partial-submit-duplicated-unsubmitted -->
+
+```
+pending → processing → delivered
+                    ↘ failed → pending (retry) → ...
+pending/failed/processing → expired (session closed or unavailable, retries exhausted, placement uncertain)
+```
+
+<!-- /planned-change:wake-partial-submit-duplicated-unsubmitted -->
 
 ### Worker Design
 
@@ -97,7 +109,7 @@ Each session has at most one worker task (`asyncio.create_task`). Workers are pe
 3. `deliver_fn(row)` — call the delivery function (raises on failure)
 4. `mark_inbound_delivered(row_id, now)` — set `status='delivered'`
 5. On exception: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry
-6. On a placement-uncertain failure — the delivery function reports that its input placement into the pane had begun when it failed — the row ends `expired` with that error, its terminal cause reaches the row's producer, and it is never retried, because a repeated placement can leave the same occurrence in the composer twice (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`, Target validation and delivery outcomes)
+6. On a placement-uncertain failure — the delivery function reports that placement of platform-authored text into an active agent's pane had begun when the attempt failed — the row ends `expired` with that error, its terminal cause reaches the row's producer, and it is never retried, because a repeated placement can leave the same occurrence in the composer twice (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`, Target validation and delivery outcomes). Conversation text is never reported placement-uncertain; its failures follow step 5
 
 <!-- /planned-change:wake-partial-submit-duplicated-unsubmitted -->
 
@@ -115,7 +127,15 @@ Access pattern:
 
 ### Retry Policy
 
-Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. No maximum retry count — messages are retried indefinitely until delivered or the session is closed.
+<!-- planned-change:wake-partial-submit-duplicated-unsubmitted -->
+
+Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule until it is delivered, its session is rejected as not found, closed or unavailable, or its attempts run out one attempt after the schedule's last entry; each of those ends the row `expired`.
+
+<!-- change:wake-partial-submit-duplicated-unsubmitted -->
+
+Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule until it is delivered, its session is rejected as not found, closed or unavailable, its attempts run out one attempt after the schedule's last entry, or a delivery attempt fails after its placement into the pane began; each of those ends the row `expired`.
+
+<!-- /planned-change:wake-partial-submit-duplicated-unsubmitted -->
 
 Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles worker crash/restart).
 

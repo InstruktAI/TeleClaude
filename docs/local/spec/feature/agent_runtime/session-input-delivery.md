@@ -201,11 +201,12 @@ inspection or recovery.
 <!-- planned:wake-partial-submit-duplicated-unsubmitted -->
 
 Once queue-backed platform-authored text has begun to be placed into a running
-agent's composer, a failure of that delivery is final: the occurrence ends as a
-failed delivery, its producer receives the terminal outcome, and it is never
-placed again. Whatever the begun placement left in the composer stays there
-unsubmitted, so the composer holds at most one copy of the occurrence. Conversation
-text keeps its own path, waiting on an occupied composer.
+agent's composer, a failure of that delivery attempt is final: the occurrence ends
+as a failed delivery, its producer receives the terminal outcome, and the platform
+neither places it again nor submits anything on its behalf. What the begun
+placement left in the composer is uncertain and stays as it is, so the platform
+never adds a second copy of the occurrence. Conversation text keeps its own path,
+waiting on an occupied composer.
 <!-- /planned:wake-partial-submit-duplicated-unsubmitted -->
 
 ### Raw-key commands
@@ -330,20 +331,6 @@ Graceful settlement is owned by
 recovery continues to use this surface's durable accepted-input evidence.
 
 #### UC-SID22: A session-originated start message identifies its sender
-
-<!-- planned:wake-partial-submit-duplicated-unsubmitted -->
-
-#### UC-SID23: Platform input whose submission fails after its paste is not placed again
-
-```gherkin
-Given queued platform-authored text is delivered to a running agent whose composer is empty
-And its paste reaches the composer but its submission fails
-When the queue next considers that accepted occurrence
-Then the occurrence ends as a failed delivery and is not delivered again
-And the composer holds no more than one copy of it
-```
-
-<!-- /planned:wake-partial-submit-duplicated-unsubmitted -->
 
 ### Cross-context references
 
