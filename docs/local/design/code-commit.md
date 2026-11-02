@@ -185,6 +185,23 @@ inspection included. There is no `--confirmed` form and no override variable.
 `origin/main` is the only main-shaped ref a slug worktree may name; a pathspec
 after `--` is never read as a ref.
 
+<!-- planned:detached-canonical-root-no-recovery-door -->
+
+**The detached-root door.** In the repository root — outside every `trees/`
+worktree — a branch `checkout` or `switch` refused while HEAD is detached names
+the sanctioned way back to `main`, because a refusal names its door
+(`general/principle/trust-and-guardrails`). The door is one `git update-ref
+--stdin` transaction that moves `main` to HEAD and attaches HEAD to `main`
+together, applied only when `main` is an ancestor of HEAD. Each of its two
+updates carries the value it was read at, so a commit or ref move landing
+between the read and the transaction refuses the whole transaction rather than
+leaving a commit reachable from neither. It writes no index or working-tree
+state, so other sessions' staged and unstaged work stays exactly as it was. The
+refusal prints the exact command. Where `main` is not an ancestor of HEAD the
+histories have diverged, the refusal says so, and the door does not apply.
+
+<!-- /planned:detached-canonical-root-no-recovery-door -->
+
 **The integration-worktree extras** matter because the worktree's index
 and working tree are owned by the state machine's
 `DELIVERY_BOOKKEEPING` step, which commits whatever is staged with no
@@ -577,6 +594,21 @@ exits with the commit's own status, prints that publishing the branch to
 next commit publishes again. A refusal because `origin` holds commits the
 worktree never integrated repeats on every commit until the branch
 integrates them; the report names that reason each time.
+
+<!-- planned:detached-canonical-root-no-recovery-door -->
+
+**Detached repository root.** The repository root's HEAD is detached while local
+`main` stays behind it, so the root is not on `main`. Post-commit maintenance
+skips every commit made there
+(`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`),
+and a commit-review stamp naming a commit only HEAD reaches is refused
+(`general/policy/commits`), until the root is back on `main`. An agent's
+branch `checkout` or `switch` there is refused with the detached-root door, and
+applying the door restores the posture without touching any session's work.
+When `main` is not an ancestor of HEAD the door does not apply; reconciling
+diverged histories in the root is outside it.
+
+<!-- /planned:detached-canonical-root-no-recovery-door -->
 
 ## See also
 
