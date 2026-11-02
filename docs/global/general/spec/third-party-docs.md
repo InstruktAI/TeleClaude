@@ -28,6 +28,16 @@ framework, or tool with its own release lifecycle or governing source.
   constraints, maturity, sources, and explicit gaps. Cross-party comparisons,
   adoption decisions, and platform-specific architecture belong to the
   relevant research or design artifact, not to any party's documentation.
+
+<!-- planned:spike-todo-kind -->
+
+- Each fact states when it was verified and how: read from a cited
+  authoritative source, or observed in a named live test. A hypothesis is
+  labelled as one and never stated as a fact. A fact without its verification
+  does not count as verified (`general/principle/grounding`).
+
+<!-- /planned:spike-todo-kind -->
+
 - Third-party sources are **never** required reads and must not use inline `@` references.
 - Cite third-party sources only under `Sources` or `See also` when authoritative references are available.
 

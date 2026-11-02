@@ -83,6 +83,32 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
    runner candidate: the lifecycle runner dispatches `sdlc/procedure/lifecycle/task/run-task` when the
    task is not held and its schedule or dependency gate is satisfied.
 
+<!-- planned:spike-todo-kind -->
+
+### Spike route
+
+A `kind=spike` todo is prepared here as well, as the pre-authorized task
+`sdlc/spec/todo-kind-spike` defines. Steps 0, 1, 3 and 5 apply as written; the
+others are replaced:
+
+- **Instead of Step 2 — reject what a spike cannot do.** If answering the
+  question needs a repository change outside the project's third-party
+  documentation and exploration home, or a test against live data, do not
+  draft a `task-plan`: record in the `log` what the question needs and that the
+  todo is misclassified, and stop.
+- **Instead of Step 4 — draft the spike's plan.** The `task-plan` states the
+  question in the upstream party's terms and the party it concerns; the
+  decision and the todo waiting on the answer; that the run follows
+  `sdlc/procedure/research/third-party-research`; and that live tests use only
+  throwaway resources the run creates and removes, and commits touch only the
+  two documentation homes.
+- **Instead of Steps 6 and 7 — no authorization.** A spike is pre-authorized
+  as a class: request nothing from a human. Once the `task-plan` exists, the
+  lifecycle runner dispatches `sdlc/procedure/lifecycle/task/run-spike` when
+  the spike is not held.
+
+<!-- /planned:spike-todo-kind -->
+
 ## Outputs
 
 - A `task-plan` artifact (durable, repeatable instruction set).

@@ -6,11 +6,27 @@ description: 'Canonical definition of the `task` todo kind — the non-SDLC, sid
 
 ## What it is
 
+<!-- planned-change:spike-todo-kind -->
+
 `task` is one of the four canonical todo kinds. It is the non-SDLC,
 side-effect-only kind: a durable, human-authorized `task-plan` that performs
 operations against the outside world. It never enters the SDLC — no PRD,
 architecture, implementation-plan, or reviewer verdict — and is drafted by
 `sdlc/procedure/lifecycle/task/prepare-task`, authorized by a human, and executed by `sdlc/procedure/lifecycle/task/run-task`.
+
+<!-- change:spike-todo-kind -->
+
+`task` is one of the five canonical todo kinds. It is the non-SDLC,
+side-effect-only kind: a durable, human-authorized `task-plan` that performs
+operations against the outside world. It never enters the SDLC — no PRD,
+architecture, implementation-plan, or reviewer verdict — and is drafted by
+`sdlc/procedure/lifecycle/task/prepare-task`, authorized by a human, and executed by `sdlc/procedure/lifecycle/task/run-task`.
+
+The task lane also runs spikes: a spike is a pre-authorized task that verifies
+third-party behavior and commits only documentation
+(`sdlc/spec/todo-kind-spike`).
+
+<!-- /planned-change:spike-todo-kind -->
 
 ## Canonical fields
 

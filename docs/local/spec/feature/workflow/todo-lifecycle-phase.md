@@ -29,6 +29,12 @@ truth for "where is this Todo, right now."
 
 The canonical enum includes `task_plan_drafting` and `task_running` — task-lane phases owned by the task lane, not by the SDLC prepare or work state machines. `task_plan_drafting` holds a kind=`task` Todo from kind assignment or task creation until `sdlc/procedure/lifecycle/task/prepare-task` writes a `task-plan`; the phase then advances to `prepared` (awaiting human authorization). `task_running` is the non-SDLC live execution marker while `sdlc/procedure/lifecycle/task/run-task` is dispatched by the lifecycle runner; it is not a build/review/finalize phase and does not satisfy SDLC work gates.
 
+<!-- planned:spike-todo-kind -->
+
+A `kind=spike` Todo moves through the same task-lane phases. At `prepared` it awaits no authorization, and `task_running` marks its live `sdlc/procedure/lifecycle/task/run-spike` session (`local/projects/teleclaude/spec/feature/workflow/research-spike`).
+
+<!-- /planned:spike-todo-kind -->
+
 Drift between an upstream artifact and the downstream artifacts grounded against
 it is detected objectively (`derive_lifecycle_drift`) and assessed for
 **materiality** only by intelligence — the `sdlc/procedure/lifecycle/prepare/drift-analyze` worker stamps

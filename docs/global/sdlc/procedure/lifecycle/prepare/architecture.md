@@ -156,6 +156,15 @@ Then name the existing in-system path that already does the nearest job and
 the external primitive each part of the design rests on. The design builds
 only what neither provides.
 
+<!-- planned:spike-todo-kind -->
+
+A primitive the design rests on whose behavior neither the project's nor the
+global third-party documentation records as verified is not decided here: file
+a spike for it and leave this phase open until the spike has run
+(`sdlc/policy/research-spikes`).
+
+<!-- /planned:spike-todo-kind -->
+
 ### 2. Reason through the architecture
 
 Begin from the approved target, then introduce implementation reality. For

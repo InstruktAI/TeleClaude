@@ -11,6 +11,8 @@ visibility: 'public'
 
 A one-shot task-outcome success reconciles lifecycle markers only in the task's own project; it does not read or change another project's documentation. A code-review record retains the reviewed commit, verdict, reviewer identity, and supplied reason. It is also recorded on the Todo claimed by the stamping session, or by its initiating session when the reviewer has no claim; if neither has a claim, no Todo review state is written.
 
+<!-- planned-change:spike-todo-kind -->
+
 `--task-firing-started` is the firing-start stamp for a `kind="task"` Todo. The
 session running the firing stamps it before it reads the Todo's `log`. It passes
 the same caller authority as `--task-outcome`: a TeleClaude session bound to the
@@ -28,6 +30,28 @@ in error with its event recorded, and with or without its line. After any of
 these outcomes, a later stamp from the same session appends nothing; a session's
 firing has at most one line and may have none. Every failure is reported to the
 caller.
+
+<!-- change:spike-todo-kind -->
+
+`--task-firing-started` is the firing-start stamp for a `kind="task"` or `kind="spike"` Todo. The
+session running the firing stamps it before it reads the Todo's `log`. It passes
+the same caller authority as `--task-outcome`: a TeleClaude session bound to the
+Todo, holding its claim, or stamping an unclaimed Todo; a human caller is
+refused. The stamp takes the instant from the system clock, records a
+firing-start audit event naming the stamping session, and then appends that
+firing's line to the end of the `log`
+(`local/projects/teleclaude/spec/feature/workflow/work-state-machine`). When the
+Todo already holds a firing-start event naming the stamping session, the stamp
+answers with the current state and writes nothing. A firing-start stamp on a
+Todo of any other kind is refused before any write. A refusal before the event write
+writes nothing. When the event write or the line write is refused, the store's
+report says whether that write may already be saved; a stamp can therefore end
+in error with its event recorded, and with or without its line. After any of
+these outcomes, a later stamp from the same session appends nothing; a session's
+firing has at most one line and may have none. Every failure is reported to the
+caller.
+
+<!-- /planned-change:spike-todo-kind -->
 
 The same state-write boundary owns artifact-write provenance capture. On every `telec todo artifacts write` for a drift-tracked artifact (`input`, `prd`, `architecture`, `implementation-plan`), the workflow's provenance boundary records the evidence needed for every drift class applicable to that artifact. Existing persisted fields: `codebase_sha_at_write` (captured via the origin-main-sha helper — never local HEAD) and `referenced_paths`, plus `upstream_digests` (the persisted-state field, aka `upstream_artifact_digests` in spec/documentation). Added persisted fields: `owned_snippet_digests`, `referenced_snippet_digests`, `produced_at`, and, for the `implementation-plan` only, `dependency_artifact_digests` — pure additive defaults with no migration. See `@spec/feature/workflow/drift-detection` for the per-class semantics. Rewriting an artifact re-captures all provenance fields at the new write and clears every drift-reviewed stamp for that artifact so the next derivation starts from a fresh anchor.
 
@@ -257,6 +281,8 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
 - Bug-kind Todos still require the explicit `--build-complete` stamp before the work machine will advance past build — bypassing the stamp leaves the bug stuck in `build_started`. The build worker (`/sdlc/build`) is responsible for issuing it as the last act of the build flow.
 - `--kickback --reason <reason>` is **work-orchestrator-owned and locked**: only a work-orchestrator session whose claim binds the slug may stamp it; a worker session, a plain operator shell, or an orchestrator bound to a different slug is refused before any write. It is the authored counterpart to a substantive plan drift verdict — it appends the reason to `input` (creating `input` when the Todo has none, e.g. a `--plan` Todo), invalidates the implementation-plan so the prepare machine re-derives from `plan_drafting`, clears any outstanding build-complete gate claim, and resets a ready finalize handoff to pending. The worktree, local and remote branch, workspace directory, and build commits are preserved. Once the reason is durable, the stamp releases the Todo's lifecycle claim and the platform ends the slug's work-lane sessions — every session the stamping orchestrator started, then the orchestrator itself, only after the stamp has answered its call; no agent ends them and no human is notified. The lifecycle runner dispatches a fresh prepare orchestrator; after the plan is re-derived and re-approved, that orchestrator ends and the lifecycle runner dispatches a fresh work orchestrator, which re-enters the preserved build and hands the builder machine-derived reconcile instructions naming the old and new implementation-plan digests.
 
+<!-- planned-change:spike-todo-kind -->
+
 - `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
   `kind="task"` Todo, reconciled by the lifecycle runner into a terminal state. A
   one-shot `success` delivers the Todo; a recurring `success` clears only a task-error
@@ -268,3 +294,20 @@ And an unresolved stamp with an empty or missing reason is refused before any wr
   `telec todo update --release` refuses to clear it, so recovery is `--task-outcome
 success` (which delivers) or a deliberate manual start; a firing that ends without a
   stamp leaves the Todo re-runnable.
+
+<!-- change:spike-todo-kind -->
+
+- `--task-outcome <success|error>` is the **durable firing-outcome** stamp for a
+  `kind="task"` or `kind="spike"` Todo, reconciled by the lifecycle runner into a terminal state. A
+  one-shot `success` delivers the Todo; a recurring `success` clears only a task-error
+  hold and leaves any other hold, including a human-pause hold, intact while keeping
+  the Todo live; `error` holds the Todo with the task-error hold source and
+  the reason. The stamp transitions terminal state synchronously and adds no new state
+  field. `error` **requires a non-empty reason**, and a task-outcome stamp on a Todo of
+  any other kind is refused before any write. A spike fires once, so its
+  `success` delivers it. A task-error hold has **no bare-unhold recovery**:
+  `telec todo update --release` refuses to clear it, so recovery is `--task-outcome
+success` (which delivers) or a deliberate manual start; a firing that ends without a
+  stamp leaves the Todo re-runnable.
+
+<!-- /planned-change:spike-todo-kind -->

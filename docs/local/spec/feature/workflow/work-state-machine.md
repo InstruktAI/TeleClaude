@@ -17,6 +17,12 @@ per-slug orchestration contract.
 
 Task execution is a separate non-SDLC lane. The lifecycle runner starts `sdlc/procedure/lifecycle/task/run-task <slug>` for a prepared, authorized task; the Phase B build/review/finalize machine does not handle task execution and does not create a worktree. `sdlc/procedure/lifecycle/task/run-task` reads and grooms `task-plan`, performs the authorized work, records results in the task-plan, and ends on a `success` firing — a recurring task is re-run as a fresh `sdlc/procedure/lifecycle/task/run-task` at its next due instant — while an `error` firing stays alive for human follow-up; it never self-ends through finalize-ready cleanup.
 
+<!-- planned:spike-todo-kind -->
+
+A spike runs in the same lane: the lifecycle runner starts `sdlc/procedure/lifecycle/task/run-spike <slug>` for a prepared spike, which needs no authorization and fires once (`local/projects/teleclaude/spec/feature/workflow/research-spike`).
+
+<!-- /planned:spike-todo-kind -->
+
 Each task firing records when it started. The session running a firing stamps
 its start (`--task-firing-started`,
 `local/projects/teleclaude/spec/feature/workflow/state-stamping`) before it reads

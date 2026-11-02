@@ -41,12 +41,25 @@ How the store maps onto the repository is owned by
   project refuses with that cause and nothing falls back to a local store or to
   comments.
 
+<!-- planned-change:spike-todo-kind -->
+
 - **Repository work only:** features, changes and bugs, and the group holders
   above them, are repository work. A task, and an item on the creative track,
   is not: it stays on the computer as it would on the local backend, never
   appears on GitHub, and an issue it already has is closed as not planned. An
   item that becomes repository work later appears on GitHub from then on, with
   its full history.
+
+<!-- change:spike-todo-kind -->
+
+- **Repository work only:** features, changes and bugs, and the group holders
+  above them, are repository work. A task, a spike, and an item on the
+  creative track, is not: it stays on the computer as it would on the local backend, never
+  appears on GitHub, and an issue it already has is closed as not planned. An
+  item that becomes repository work later appears on GitHub from then on, with
+  its full history.
+
+<!-- /planned-change:spike-todo-kind -->
 
 <!-- planned-change:github-item-acts -->
 
