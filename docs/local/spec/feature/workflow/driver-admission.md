@@ -65,8 +65,9 @@ A todo is held when either of these exists in its project on this computer:
 ### Structured refusal causes
 
 Workflow admission publishes its unavailable cause through
-`AdmissionUnavailable`'s structured payload. Session-create boundaries and
-clients preserve that payload alongside their readable explanation. The
+`AdmissionUnavailable`'s structured payload, which session creation carries
+to its caller beside the readable explanation
+(`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`). The
 runner consumes the declared cause to distinguish assignment-blocked work
 from other undecided starts; it does not classify the explanation's wording.
 An absent or unrecognised structured cause retains the existing generic
