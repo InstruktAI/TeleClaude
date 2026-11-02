@@ -108,7 +108,7 @@ Each session has at most one worker task (`asyncio.create_task`). Workers are pe
 2. `claim_inbound(row_id, now, lock_cutoff)` — CAS UPDATE: set `locked_at`, `status='processing'`
 3. `deliver_fn(row)` — call the delivery function (raises on failure)
 4. `mark_inbound_delivered(row_id, now)` — set `status='delivered'`
-5. On exception: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry
+5. On an exception step 6 does not cover: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry, until the row's attempts run out (Retry Policy)
 6. On a placement-uncertain failure — the delivery function reports that placement of platform-authored text into an active agent's pane had begun when the attempt failed — the row ends `expired` with that error, its terminal cause reaches the row's producer, and it is never retried, because a repeated placement can leave the same occurrence in the composer twice (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`, Target validation and delivery outcomes). Conversation text is never reported placement-uncertain; its failures follow step 5
 
 <!-- /planned-change:wake-partial-submit-duplicated-unsubmitted -->
@@ -129,11 +129,11 @@ Access pattern:
 
 <!-- planned-change:wake-partial-submit-duplicated-unsubmitted -->
 
-Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule until it is delivered, its session is rejected as not found, closed or unavailable, or its attempts run out one attempt after the schedule's last entry; each of those ends the row `expired`.
+Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule. Retrying stops and the row ends `expired` when its session is rejected as not found, closed or unavailable, or when its attempts run out one attempt after the schedule's last entry.
 
 <!-- change:wake-partial-submit-duplicated-unsubmitted -->
 
-Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule until it is delivered, its session is rejected as not found, closed or unavailable, its attempts run out one attempt after the schedule's last entry, or a delivery attempt fails after its placement into the pane began; each of those ends the row `expired`.
+Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule. Retrying stops and the row ends `expired` when its session is rejected as not found, closed or unavailable, when its attempts run out one attempt after the schedule's last entry, or when an attempt to deliver platform-authored text to an active agent fails after its placement into the pane began (Worker Design step 6).
 
 <!-- /planned-change:wake-partial-submit-duplicated-unsubmitted -->
 
