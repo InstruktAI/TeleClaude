@@ -46,3 +46,7 @@ away, stops the computer entirely today, and what it produced meanwhile is lost.
   working, though none of its own work needs another computer.
 - **Drop cluster events while unreachable.** Rejected: other computers' retained
   consumers would miss facts they act on, such as a passed revision.
+
+## Status
+
+Superseded in part by ADR-0155

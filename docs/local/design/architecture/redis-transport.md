@@ -58,6 +58,12 @@ flowchart LR
 
 - **Bounded Backpressure**: The shared Redis client draws connections from a single bounded pool that blocks a caller for a bounded time when every connection is in use, rather than failing immediately. A momentary saturation waits for a connection to be released instead of surfacing a connection error to every subsystem at once; only a saturation that outlasts the bound raises.
 
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+- **A Cut-Off Computer Refuses At Once**: The cluster Redis has one record of whether it answers, kept by the event platform (`local/projects/teleclaude/design/architecture/event-delivery`). Before it sends a request to another computer, the transport reads that record; while it says the cluster Redis does not answer, the request is refused at once with a reason naming the target computer and the unreachable cluster Redis, and nothing is sent. A reachability failure the transport meets on the cluster Redis is reported into that record. The record governs refusal only: the transport's own reconnect loop still decides when its connection is ready, and a request made while the record says the cluster Redis answers but the connection is still reconnecting waits for readiness within its deadline.
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 ## Primary flows
 
 ### 1. Cross-Computer Command Execution
@@ -156,6 +162,13 @@ refuses it without running it.
 
 - **Redis Unavailable**: Daemon starts without Redis transport. Cross-computer commands fail. Local and Telegram operations unaffected.
 - **Network Partition**: Computer heartbeats stop arriving. Registry marks computer offline after TTL. Commands to partitioned computer timeout.
+
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+- **Cluster Redis Away From This Computer**: Requests to other computers are refused at once, naming the unreachable cluster Redis, until its record says it answers again. A request sent in the moment before the record learns of the loss fails as before, by its own deadline or connection error, and that failure marks the record. Notifications sent without awaiting an answer are refused the same way, and each sender keeps its own handling of a failed send.
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 - **Stream Accumulation**: If consumer lags, streams grow beyond MAXLEN. Oldest messages trimmed. Commands may be lost if not processed in time.
 - **Response Stream Collision**: Extremely rare. Two messages with same ID overwrite response stream. Mitigated by UUID message IDs.
 - **Digest Not Recomputed**: The digest is a SHA-256 of the exact projects-with-todos answer, so an unchanged digest means an unchanged answer. When this computer cannot read its own projects, it keeps advertising the last digest, and peers keep their copy until a later pass succeeds.

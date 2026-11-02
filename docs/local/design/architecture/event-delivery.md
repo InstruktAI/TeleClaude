@@ -42,11 +42,28 @@ coordination capability under
   consumer's handling. Source materialization consumes current authoritative
   state under `local/projects/teleclaude/design/architecture/cache`; stream
   arrival order is not a database revision.
+
+<!-- planned-change:cluster-redis-outage-store-and-forward -->
+
 - **Producer completion:** successful publication establishes stream acceptance,
   not completion of every reaction. A source commit and a stream append are
   separate effects unless the source owner's contract supplies a durable
   handover. Publication failure stays observable and does not manufacture a
   rollback or successful delivery.
+
+<!-- change:cluster-redis-outage-store-and-forward -->
+
+- **Producer completion:** successful publication establishes stream
+  acceptance, or, for a cluster event its computer holds, acceptance into that
+  computer's outbox; it never establishes completion of every reaction. A source
+  commit and a stream append are separate effects unless the source owner's
+  contract supplies a durable handover. Publication failure stays observable and
+  does not manufacture a rollback or successful delivery.
+- **Held events keep their order:** a cluster event a computer published while
+  it held earlier ones reaches the cluster stream after all of them.
+
+<!-- /planned-change:cluster-redis-outage-store-and-forward -->
+
 - **Each scope its own Redis:** every event type states its scope, local by
   default and cluster when a consumer on another computer acts on it.
   Publication appends an event to the Redis of its scope: the computer's own
@@ -181,6 +198,56 @@ load. A consumer that takes any type from every computer, such as
 event-bound maintenance, receives another computer's events only when they are
 cluster events.
 
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+### Held cluster events
+
+A computer with its own local Redis holds the cluster events it cannot hand to
+the cluster Redis, in one outbox on that local Redis. Publication puts a cluster
+event in the outbox instead of on its stream while the outbox still holds an
+event, while the record of the cluster Redis says it does not answer, or when
+its append fails because the cluster Redis does not answer. A held entry is the
+event exactly as it would have been appended, with the stream it is bound for
+and, for a relayed event, its claim. Every process that publishes holds the same
+way — the daemon, the webhook receiver and short-lived command-line processes;
+one without the daemon's record learns that the cluster Redis is away from its
+own failed append. Local events never enter the outbox.
+
+The outbox is the only copy of what it holds. Its entries leave it only by being
+forwarded, never by trimming, and the local Redis's append-only persistence
+keeps them across a restart of the daemon or of that Redis. A computer whose
+local events share the cluster Redis has no outbox: there a cluster event that
+cannot be appended fails at its producer.
+
+The daemon's forwarder empties the outbox once the record says the cluster
+Redis answers. It appends the held events to their streams in the order they
+were held and removes each from the outbox only once the cluster Redis has
+accepted it, so the outbox stays non-empty until the last held event is on its
+stream and every event published meanwhile queues behind the held ones. A held
+relayed event is claimed in the same atomic step as its forwarded append, as at
+publication; one whose claim another receipt of the same delivery already took
+leaves the outbox without being appended.
+
+Forwarding keeps to what retained consumers can still read. It appends in
+bounded batches, and before each batch it waits while a consumer group on the
+target stream that has advanced since the previous batch would have entries it
+has not yet read trimmed out of the stream's retained window by the batch. A
+group that has not advanced holds nothing back, so a consumer whose computer is
+away cannot stall forwarding.
+
+```mermaid
+flowchart LR
+    P[Producer: cluster event] --> Q{Outbox empty and<br/>cluster Redis answers?}
+    Q -->|yes| A[Append to cluster stream]
+    A -->|fails: not answering| O
+    Q -->|no| O[Hold in outbox<br/>on local Redis]
+    O --> F[Forwarder: once the cluster Redis answers,<br/>append in held order, paced by consumer-group room]
+    F --> A2[Cluster stream]
+    F --> R[Remove from outbox after acceptance]
+```
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 ### Earlier internal wire interoperability
 
 The compatibility surface is the earlier `InternalEventEnvelope` representation
@@ -258,6 +325,8 @@ ordering guarantee for these separate transports.
 - Earlier peers retain their declared interoperability limits. Adapting their
   envelopes does not establish source ordering absent from their records.
 
+<!-- planned-change:cluster-redis-outage-store-and-forward -->
+
 - A Redis that stops answering does not end the readers on it. Each Redis has
   one record of whether it answers, whose loss and return are logged once each.
   A retained consumer's reader waits on that record and then resumes from its
@@ -267,10 +336,50 @@ ordering guarantee for these separate transports.
   for a connection failure. Reaction failures stay contained as that contract
   states; only a failure other than the Redis connection that escapes a
   reader's run ends that run under its supervisor.
+
+<!-- change:cluster-redis-outage-store-and-forward -->
+
+- A Redis that stops answering does not end the readers on it. Each Redis has
+  one record of whether it answers and, while it does not, since when, whose
+  loss and return are logged once each. The cluster Redis's record also takes
+  the losses the cross-computer transport meets on it
+  (`local/projects/teleclaude/design/architecture/redis-transport`), so the
+  event platform, the transport and the readiness answer read one record. A
+  retained consumer's reader waits on that record and then resumes from its
+  group, recovering its pending entries in order before it reads new ones. A
+  live consumer keeps the recovery its own contract in
+  `local/projects/teleclaude/spec/feature/event-catalog/event-consumers` states
+  for a connection failure. Reaction failures stay contained as that contract
+  states; only a failure other than the Redis connection that escapes a
+  reader's run ends that run under its supervisor.
+
+<!-- /planned-change:cluster-redis-outage-store-and-forward -->
+
 - A Redis that did not answer at startup has the positions of the readers on it
   taken once it answers. A retained consumer whose group already exists resumes
   from it; one whose group is new starts at that moment, so it omits what that
   Redis took in before.
+
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+- A crash between a forwarded append and its removal from the outbox appends
+  that event again. The event keeps its id, so a retained consumer is not handed
+  it twice
+  (`local/projects/teleclaude/spec/feature/event-catalog/event-consumers`), and
+  a relayed event's claim leaves the repeat unappended.
+- A process without the daemon's record waits for its append to the cluster
+  Redis to fail, within the cluster client's socket timeout, before it holds the
+  event.
+- The outbox has no count bound: it grows with the length of the outage and the
+  rate of cluster events, within the local Redis's memory. A hold the local
+  Redis refuses is a publication failure.
+- While this computer holds events, its own consumers of the cluster stream
+  receive them only once they are forwarded.
+- A consumer group that stops advancing while a backlog is forwarded can have
+  unread entries trimmed out of the stream's retained window; it recovers what
+  the window still holds, as for any slow consumer.
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
 
 ## See Also
 

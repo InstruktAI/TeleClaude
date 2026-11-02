@@ -162,6 +162,19 @@ a thing: each event is its own message.
   so a handling interrupted after its last send, and a parked event handled
   again, repeat nothing recorded. The inherent window above applies unchanged:
   delivery is at least once.
+
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+- **A held message counts as sent.** When person-addressed delivery holds a
+  message for a master it cannot reach
+  (`local/projects/teleclaude/spec/messaging`, The master sends), it has taken
+  the message, so both consumers that tell people record the recipient as told,
+  exactly as for a delivered send, and no retry sends it again. A refusal the
+  master produces once the message reaches it is the held send's own outcome and
+  reopens nothing here.
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 - **An undeclared type is told by its name.** An event relayed from an external
   system has no type declaration; its message states what happened from the
   type name read as words, and names the inbound source as the thing.
