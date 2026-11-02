@@ -79,11 +79,12 @@ of them.
   repository. `telec projects active-computer set`, run deliberately, names it;
   nothing names it automatically. It acts on the project of the directory it
   runs in, or on the one `--project-root` names, so it can be run from anywhere.
-  Naming a computer tells that computer before the variable is written, with
-  a deadline the variable is written by; a naming whose notice is not sent in
-  time to write by that deadline changes nothing and is reported as failed.
-  The told computer then takes up the project's work once the variable names
-  it (`local/projects/teleclaude/spec/feature/workflow/work-pickup`).
+  A known computer can be named while offline. Before changing the variable,
+  naming reserves a durable recognition record and publishes requested work;
+  refused or unacknowledged registration changes nothing. Confirmed completion
+  is recorded and announced only after GitHub acknowledges the write. Pickup
+  recognises the naming through its owning contract
+  (`local/projects/teleclaude/spec/feature/workflow/work-pickup`).
 
 <!-- /planned-change:event-driven-lifecycle-runner -->
 

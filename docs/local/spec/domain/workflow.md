@@ -144,7 +144,7 @@ concerned:
 
 <!-- change:event-driven-lifecycle-runner -->
 
-- the active-computer-named event: the project's GitHub workflow store, with
+- the naming-register-updated event: the project's GitHub workflow store, with
   the project as origin.
 
 <!-- /planned-change:event-driven-lifecycle-runner -->

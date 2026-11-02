@@ -55,9 +55,11 @@ Pickup evaluates a project when one of these happens:
 - **A pickup setting changing:** whether pickup runs, which kinds of work it
   starts, and how many todos it drives at once. Every project the setting
   governs is evaluated.
-- **This computer becoming the project's active computer:** when the notice
-  of its naming arrives and the variable names it, or, when it does not yet,
-  once the naming can no longer change the variable and it then does.
+- **A naming of this computer as the project's active computer:** confirmed
+  completion wakes pickup directly. A registered naming whose remote effect
+  remains unknown retains a project-specific recovery retry. Such an
+  evaluation grants no admission authority
+  (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
 - **A scheduled task coming due:** its one-shot instant, or each occurrence of
   its recurring rule.
 - **A start pickup made failing** without its orchestrator starting: pickup
@@ -81,11 +83,17 @@ stopped or starting is taken up once the daemon runs again.
 
 ### What does not wake pickup
 
-Nothing else. With no change of the kinds above, pickup does not run and reads
-no project's work.
+Nothing else. With no change, due schedule or outstanding recovery obligation
+of the kinds above, pickup does not run and reads no project's work.
 
 ## Known caveats
 
+- An unknown naming outcome can retain its project-specific retry
+  indefinitely. A full naming register refuses another naming before changing
+  GitHub; unresolved records are not evicted to admit it.
+- A target that cannot reach the cluster register cannot recover a naming it
+  has not learned until connectivity returns. Existing local recovery
+  obligations continue meanwhile.
 - While GitHub holds a project's requests back after a rate limit, a delivered
   change is adopted, and its work evaluated, only when GitHub's stated time has
   passed (`local/projects/teleclaude/design/architecture/workflow-store`).

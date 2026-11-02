@@ -93,8 +93,8 @@ integrator, correlating failures into degradation events, and telling people
 about events — are consumers. Each acts only on events its own computer emitted,
 so a failure is correlated, a degradation announced, and a person told, once, by
 the computer it happened on. One reaction acts on another computer's event: the
-named computer's pickup acts on the event naming it a project's active
-computer, whichever computer emitted it
+named computer's naming recovery consumes current-source notifications about
+its naming register, whichever computer emitted them
 (`local/projects/teleclaude/design/architecture/work-pickup`).
 <!-- /planned-change:event-driven-lifecycle-runner -->
 
