@@ -119,8 +119,4 @@ sequenceDiagram
 
 - **Occupied Shell Input**: Shell readiness reads only the foreground program's name, so a shell whose editing buffer already holds unsubmitted text — typed through an attached terminal, for example — reads as ready. A launch command pasted and submitted there joins that text into one command line, and what the shell then runs depends on that text: it may fail, run something else, or start an agent with the wrong arguments. When the pending text is itself a command ending in an argument, as an earlier agent launch is, the launch's leading environment assignment becomes part of that argument and the agent runs under an identity other than the one registered for the launch, so the session record no longer matches the running agent. Agent restart discards the shell's pending input, leaving any pane mode first, before it places its relaunch command; input that arrives between that discard and the placement still joins the command. The other launch paths place their command without discarding pending input.
 
-<!-- planned:wake-partial-submit-duplicated-unsubmitted -->
-
 - **Submit Fails After Paste**: Paste and submit are separate host commands, and the paste-and-submit primitive reports only whether both completed. When the host refuses the submit command after the paste landed, for example while it cannot spawn processes, the pasted text stays in the composer unsubmitted and the caller sees a plain failure. Queue-backed platform input whose placement had begun ends as a failed delivery rather than being placed again (`local/projects/teleclaude/spec/inbound-queue`, Worker Design), so the composer keeps that one unsubmitted copy until someone submits or clears it.
-
-<!-- /planned:wake-partial-submit-duplicated-unsubmitted -->
