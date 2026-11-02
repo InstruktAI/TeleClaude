@@ -165,6 +165,12 @@ concerned:
 
 <!-- /planned:event-driven-lifecycle-runner -->
 
+<!-- planned:github-turn-mirror -->
+
+- `local/projects/teleclaude/adr/0154-a-work-items-conversation-is-mirrored-by-each-computer-for-its-own-sessions` — each computer mirroring its own sessions' conversation, with no fleet coordination
+
+<!-- /planned:github-turn-mirror -->
+
 - `local/projects/teleclaude/adr/0001-git-stash-prevention` — keeping test runs from leaving git stash entries
 - `local/projects/teleclaude/adr/0015-kind-as-lifecycle-entry-point` — a kind as the lifecycle entry point
 - `local/projects/teleclaude/adr/0017-review-lanes-as-dod-anchored-shared-group` — review lanes as one shared catalog

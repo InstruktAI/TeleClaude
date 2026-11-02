@@ -201,9 +201,9 @@ How the store maps onto the repository is owned by
   person's comment that reached the session from GitHub is written like any
   other input; a message a person gave the session anywhere else is not
   written, and the turn notes only that the person spoke. Each turn appears
-  once; a session's turns appear in the order it completed them, and the
-  turns of sessions on different computers appear in the order those
-  computers post them. A turn too large for one comment continues in the
+  once. The turns of the sessions one computer ran appear in the order they
+  completed; the turns of sessions on different computers appear in the
+  order those computers post them. A turn too large for one comment continues in the
   comments that follow it. Before a turn is
   written, every secret the platform holds is masked, and credential-like
   strings and personal data are removed as far as detection recognizes them;
@@ -323,7 +323,7 @@ Scenario: A collaborator follows a build and its reviews on GitHub
 Scenario: A collaborator reads how the agents worked an item
   Given a GitHub-backed project with an item the workflow is preparing or building
   When a collaborator opens the item's issue, or its pull request once the build has started
-  Then they read the turns of the item's sessions, each session's turns in the order it completed them
+  Then they read the turns of the item's sessions, those from one computer in the order they completed
   And each turn names its session, role and completion time, what the session was asked and what it answered
   And each turn is written by the identity of the session's role, not by the record's
 
@@ -394,5 +394,13 @@ Scenario: A turn that cannot be cleaned is withheld
   part-way may have other comments between its parts; each comment shows its
   session, turn number and completion time. A computer that is gone for good
   leaves its unposted turns unposted.
+
+<!-- /planned:github-turn-mirror -->
+
+<!-- planned:github-turn-mirror -->
+
+## See Also
+
+- docs/local/adr/0154-a-work-items-conversation-is-mirrored-by-each-computer-for-its-own-sessions.md — why each computer mirrors its own sessions with no fleet coordination.
 
 <!-- /planned:github-turn-mirror -->
