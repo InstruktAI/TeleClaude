@@ -372,7 +372,7 @@ def retry_failed_action(project_root: Path, key: str, action_id: str) -> bool:
         if not path.exists():
             return False
         record = read_record(path)
-        if record.state is not MaintenanceRecordState.FAILED:
+        if record is None or record.state is not MaintenanceRecordState.FAILED:
             return False
         write_record(
             path,
@@ -508,6 +508,9 @@ def _run_activation(
     def start_record(action_id: str) -> None:
         path = record_path(root, key, action_id)
         current = read_record(path)
+        if current is None:
+            # The drain listed this record as open under its lock; only a retired obligation reads as absent.
+            raise FileNotFoundError(path)
         if current.state is MaintenanceRecordState.RUNNING:
             logger.warning(
                 _MAINTENANCE_ACTION_INTERRUPTED_EVENT,
