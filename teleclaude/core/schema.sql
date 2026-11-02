@@ -141,7 +141,9 @@ CREATE TABLE IF NOT EXISTS inbound_queue (
     caller_job_role TEXT,
     caller_origin_prefix_len INTEGER,
     caller_origin_suffix_len INTEGER,
-    binding_disposition TEXT CHECK(binding_disposition IN ('legacy_pre_cutover', 'input_conflict'))
+    binding_disposition TEXT CHECK(binding_disposition IN ('legacy_pre_cutover', 'input_conflict')),
+    accepted_input_at TEXT,
+    accepted_runtime_turn_id TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_inbound_queue_session_status ON inbound_queue(session_id, status, next_retry_at);

@@ -80,6 +80,7 @@ class DeliveryTerminalCause(StrEnum):
 
     RETRY_EXHAUSTED = "retry_exhausted"
     HOLD_EXPIRED = _HELD_MESSAGE_EXPIRED_REASON
+    REJECTED = "rejected"
 
 
 class HoldNoticeTerminalDisposition(StrEnum):
@@ -512,6 +513,7 @@ class InboundQueueManager:
                 source_feature=row["source_feature"],
                 text_kind=row["text_kind"],
             )
+            await self._notify_terminal_cause(row, DeliveryTerminalCause.REJECTED)
         except Exception as exc:
             error_str = str(exc)
             attempt = row["attempt_count"] + 1

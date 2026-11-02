@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
@@ -53,6 +54,14 @@ _AGENT_STATUS_OWNED_FIELDS = frozenset(
         SessionField.TURN_NOTIFICATIONS_SENT.value,
     }
 )
+
+
+@dataclass(frozen=True)
+class _AcceptanceBoundary:
+    """What a session had recorded when one input was accepted: its input clock instant and turn identity."""
+
+    input_at: datetime
+    runtime_turn_id: str | None
 
 
 def _is_unannounced_update(fields: set[str]) -> bool:
@@ -539,10 +548,32 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         """Update session fields only while their managed launch still owns the row."""
         return await self._update_session(session_id, expected_runtime_run_id, **fields)
 
+    async def update_session_if_acceptance_unchanged(
+        self,
+        session_id: str,
+        *,
+        accepted_input_at: datetime,
+        accepted_runtime_turn_id: str | None,
+        **fields: object,
+    ) -> Session | None:
+        """Update session fields only while nothing newer than one accepted input is recorded.
+
+        The write applies when, at the write itself, the session's input clock is no later than
+        ``accepted_input_at`` and its runtime turn identity is absent or still ``accepted_runtime_turn_id``.
+        Newer accepted input advances the clock and a native turn mints a turn identity, so a match means
+        neither happened since that acceptance. Returns ``None`` when the row did not match.
+        """
+        boundary = _AcceptanceBoundary(
+            input_at=self._coerce_datetime(accepted_input_at) or accepted_input_at,
+            runtime_turn_id=accepted_runtime_turn_id,
+        )
+        return await self._update_session(session_id, None, boundary, **fields)
+
     async def _update_session(
         self,
         session_id: str,
         expected_runtime_run_id: str | None,
+        acceptance_boundary: _AcceptanceBoundary | None = None,
         **fields: object,
     ) -> Session | None:
         """Update session fields and handle events.
@@ -635,6 +666,7 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
                         session_id,
                         updates,
                         expected_runtime_run_id,
+                        acceptance_boundary,
                     ):
                         return None
 
@@ -667,24 +699,33 @@ class DbSessionsMixin(AgentStatusPersistenceMixin, DbPendingDeletionsMixin):
         session_id: str,
         updates: Mapping[str, object],
         expected_runtime_run_id: str | None,
+        acceptance_boundary: _AcceptanceBoundary | None = None,
     ) -> bool:
-        """Apply normalized session fields, conditional on the managed launch when supplied."""
-        if expected_runtime_run_id is None:
+        """Apply normalized session fields, conditional on the managed launch or acceptance boundary when supplied."""
+        if expected_runtime_run_id is None and acceptance_boundary is None:
             for key, value in updates.items():
                 setattr(row, key, value)
             db_session.add(row)
             await db_session.commit()
             return True
 
-        statement = (
-            update(db_models.Session)
-            .where(
-                db_models.Session.session_id == session_id,
-                db_models.Session.runtime_run_id == expected_runtime_run_id,
+        conditions = [db_models.Session.session_id == session_id]
+        if expected_runtime_run_id is not None:
+            conditions.append(db_models.Session.runtime_run_id == expected_runtime_run_id)
+        if acceptance_boundary is not None:
+            conditions.append(
+                or_(
+                    db_models.Session.last_message_sent_at.is_(None),
+                    db_models.Session.last_message_sent_at <= acceptance_boundary.input_at,
+                )
             )
-            .values(updates)
-            .returning(db_models.Session.session_id)
-        )
+            conditions.append(
+                or_(
+                    db_models.Session.runtime_turn_id.is_(None),
+                    db_models.Session.runtime_turn_id == acceptance_boundary.runtime_turn_id,
+                )
+            )
+        statement = update(db_models.Session).where(*conditions).values(updates).returning(db_models.Session.session_id)
         conditional_result = await db_session.exec(statement)
         if not conditional_result.all():
             return False

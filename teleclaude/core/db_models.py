@@ -315,6 +315,8 @@ class InboundQueue(SQLModel, table=True):
     caller_origin_prefix_len: int | None = None
     caller_origin_suffix_len: int | None = None
     binding_disposition: str | None = None
+    accepted_input_at: str | None = None
+    accepted_runtime_turn_id: str | None = None
 
 
 class AcceptedTurnBindingRow(SQLModel, table=True):
