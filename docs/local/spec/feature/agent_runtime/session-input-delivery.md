@@ -204,11 +204,9 @@ Once queue-backed platform-authored text has begun to be placed into a running
 agent's composer, a failure of that delivery attempt is final: the occurrence ends
 as a failed delivery, and the platform neither places it again nor submits anything
 on its behalf. What the begun placement left in the composer is uncertain and stays
-as it is, so the platform never adds a second copy of the occurrence. A producer
-that receives terminal delivery notices is told that delivery failed after the input
-began to be placed, so it may be in the agent's composer unsubmitted; it is never
-told the input did not reach the agent. Conversation text keeps its own path,
-waiting on an occupied composer.
+as it is, so the platform never adds a second copy of the occurrence. A terminal
+delivery notice sent for this failure never says the input did not reach the agent.
+Conversation text keeps its own path, waiting on an occupied composer.
 <!-- /planned:wake-partial-submit-duplicated-unsubmitted -->
 
 ### Raw-key commands
