@@ -29,7 +29,7 @@
     "ajv": "^8.17.1",
     "parse5": "8.0.1",
     "saxes": "6.0.0",
-    "simple-icons": "16.35.0"
+    "simple-icons": "16.36.0"
   },
   "overrides": {
     "fast-uri": "4.2.3"
