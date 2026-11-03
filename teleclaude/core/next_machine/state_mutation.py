@@ -254,7 +254,8 @@ class ApprovalsManager:
 
         Marks each cascaded review ``cleared_by_substantive_drift`` so phase
         derivation re-opens it (e.g. the implementation-plan derives back to
-        ``plan_drafting``). Shared by the drift-reviewed stamp and the kickback stamp.
+        ``plan_drafting``). Shared by the drift-reviewed stamp, the kickback stamp and
+        the prepare step that finds substantive drift still live at PREPARED.
         """
         for review_field in _DRIFT_REVIEW_CASCADE.get(artifact, ()):
             review = self._writer.review(review_field)
