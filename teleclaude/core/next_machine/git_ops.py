@@ -234,7 +234,7 @@ def _meaningful_changed_files_between(cwd: str, baseline: str, head: str) -> lis
         )
     except (GitCommandError, OSError) as exc:
         logger.warning(
-            "drift file scan failed; treating drift as pending",
+            "drift file scan failed",
             cwd=cwd,
             baseline=baseline,
             head=head,
@@ -304,27 +304,18 @@ def derive_artifact_drift(
 
     ``pending`` is fail-safe: if an artifact names referenced code but the git
     comparison cannot prove freshness, a drift-review worker must inspect it.
+    An accepted cosmetic review settles the class whenever the review anchor
+    still holds against current evidence, even when the write baseline cannot be
+    compared. Without current origin/main there is nothing to compare, so the
+    class stays pending.
     """
     if not artifact_entry.digest and not artifact_entry.produced_at:
         return DRIFT_FRESH
     if not artifact_entry.referenced_paths:
         return DRIFT_FRESH
     current_head_sha = get_origin_main_sha(repo_root) if repo_root else ""
-    if not artifact_entry.codebase_sha_at_write or not current_head_sha:
+    if not current_head_sha:
         return _reviewed_verdict_or_pending(drift_reviewed_stamp)
-    if artifact_entry.codebase_sha_at_write == current_head_sha:
-        return DRIFT_FRESH
-
-    has_overlap = _commits_overlap_references(
-        repo_root,
-        artifact_entry.codebase_sha_at_write,
-        current_head_sha,
-        artifact_entry.referenced_paths,
-    )
-    if has_overlap is None:
-        return _reviewed_verdict_or_pending(drift_reviewed_stamp)
-    if not has_overlap:
-        return DRIFT_FRESH
 
     def review_still_holds(reviewed: DriftReviewedStamp) -> bool:
         if not reviewed.head_sha_at_review:
@@ -338,6 +329,22 @@ def derive_artifact_drift(
             artifact_entry.referenced_paths,
         )
         return overlap_since_review is False
+
+    if not artifact_entry.codebase_sha_at_write:
+        return _reviewed_verdict_or_pending(drift_reviewed_stamp, evidence_matches_review=review_still_holds)
+    if artifact_entry.codebase_sha_at_write == current_head_sha:
+        return DRIFT_FRESH
+
+    has_overlap = _commits_overlap_references(
+        repo_root,
+        artifact_entry.codebase_sha_at_write,
+        current_head_sha,
+        artifact_entry.referenced_paths,
+    )
+    if has_overlap is None:
+        return _reviewed_verdict_or_pending(drift_reviewed_stamp, evidence_matches_review=review_still_holds)
+    if not has_overlap:
+        return DRIFT_FRESH
 
     return _reviewed_verdict_or_pending(
         drift_reviewed_stamp,
@@ -358,11 +365,8 @@ def derive_upstream_artifact_drift(model: TodoState, artifact_name: str) -> Arti
     current = {key: getattr(model.artifacts, key).digest for key in upstream_keys}
     if entry.upstream_digests == current:
         return DRIFT_FRESH
-    stamp = _drift_stamp_for_artifact(model, state_key)
-    if _has_missing_required_upstream(model, state_key, current):
-        return _reviewed_verdict_or_pending(stamp)
     return _reviewed_verdict_or_pending(
-        stamp,
+        _drift_stamp_for_artifact(model, state_key),
         evidence_matches_review=lambda reviewed: reviewed.upstream_digests_at_review == current,
     )
 
@@ -439,31 +443,6 @@ def _dependency_evidence_matches_review(
         anchor.get(dep_slug, {}).get(state_key) == digest
         for dep_slug, digests in current_evidence.items()
         for state_key, digest in digests.items()
-    )
-
-
-def _has_missing_required_upstream(
-    model: TodoState,
-    state_key: str,
-    current_digests: dict[str, str],
-) -> bool:
-    return any(
-        not digest and not _is_intentionally_absent_upstream(model, state_key, upstream_key)
-        for upstream_key, digest in current_digests.items()
-    )
-
-
-def _is_intentionally_absent_upstream(model: TodoState, state_key: str, upstream_key: str) -> bool:
-    entry = getattr(model.artifacts, state_key)
-    if not entry.upstream_digests.get(upstream_key):
-        # Structurally absent for this Todo's kind (e.g. diagnosis for a feature,
-        # prd/architecture for a bug): the artifact was authored with this upstream
-        # empty, so an empty current digest is not a newly-missing required upstream.
-        return True
-    return (
-        state_key == STATE_KEY_IMPLEMENTATION_PLAN
-        and upstream_key == STATE_KEY_ARCHITECTURE
-        and model.approvals.architecture_skipped is not None
     )
 
 
