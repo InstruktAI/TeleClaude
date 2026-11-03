@@ -81,12 +81,12 @@ maintenance substrate follow `sdlc/principle/design-fundamentals`.
 
 ## Known caveats
 
-- A release that predates remote-main activation rejects a project declaration
-  naming it and falls back to the base model, which binds Blueprint maintenance
-  to canonical-main activation and drops the rest of the project's overlay. A
-  computer running such a release, or rolled back to one, regenerates the
-  Blueprint on every canonical-main commit until it runs a release that
-  supports the declaration.
+- A release that predates remote-main activation cannot read a project
+  declaration naming it, and treats the overlay as unreadable
+  (`local/projects/teleclaude/design/architecture/checkpoint-system`,
+  Invariant 22). A computer running such a release, or rolled back to one,
+  therefore regenerates the Blueprint on every canonical-main commit until it
+  runs a release that supports the declaration.
 
 ## See Also
 
