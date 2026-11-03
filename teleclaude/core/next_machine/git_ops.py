@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -451,8 +451,15 @@ def derive_owned_snippet_drift(
     artifact_name: str,
     *,
     snippet_digest_fn: Callable[[str], str],
+    owned_snippet_ids_fn: Callable[[], list[str]] | None,
 ) -> ArtifactDriftStatus:
-    """Derive drift for snippets owned by the artifact's delivering todo."""
+    """Derive drift for snippets owned by the artifact's delivering todo.
+
+    ``owned_snippet_ids_fn`` reads the IDs the todo currently owns, resolvable or
+    not; it is only called when a recorded digest no longer resolves and a
+    cosmetic review must be compared against its anchor. ``None`` means current
+    ownership cannot be read, which keeps that case pending.
+    """
     state_key = _state_key_for_artifact(artifact_name)
     entry = getattr(model.artifacts, state_key)
     if _artifact_is_absent(entry):
@@ -462,7 +469,19 @@ def derive_owned_snippet_drift(
         return _reviewed_verdict_or_pending(stamp)
     current = _current_snippet_digests(entry.owned_snippet_digests, snippet_digest_fn=snippet_digest_fn)
     if current is None:
-        return _reviewed_verdict_or_pending(stamp)
+        if owned_snippet_ids_fn is None:
+            return _reviewed_verdict_or_pending(stamp)
+
+        def owned_anchor_holds(reviewed: DriftReviewedStamp) -> bool:
+            anchor = reviewed.snippet_digests_at_review
+            compared_ids = {
+                *entry.owned_snippet_digests,
+                *owned_snippet_ids_fn(),
+                *(set(anchor) - set(entry.referenced_snippet_digests)),
+            }
+            return _snippets_match_anchor(anchor, compared_ids, snippet_digest_fn=snippet_digest_fn)
+
+        return _reviewed_verdict_or_pending(stamp, evidence_matches_review=owned_anchor_holds)
     if entry.owned_snippet_digests == current:
         return DRIFT_FRESH
     return _reviewed_verdict_or_pending(
@@ -490,7 +509,14 @@ def derive_upstream_snippet_drift(
         return _reviewed_verdict_or_pending(stamp)
     current = _current_snippet_digests(entry.referenced_snippet_digests, snippet_digest_fn=snippet_digest_fn)
     if current is None:
-        return _reviewed_verdict_or_pending(stamp)
+        return _reviewed_verdict_or_pending(
+            stamp,
+            evidence_matches_review=lambda reviewed: _snippets_match_anchor(
+                reviewed.snippet_digests_at_review,
+                entry.referenced_snippet_digests,
+                snippet_digest_fn=snippet_digest_fn,
+            ),
+        )
     if entry.referenced_snippet_digests == current:
         return DRIFT_FRESH
     return _reviewed_verdict_or_pending(
@@ -589,6 +615,20 @@ def _snippet_evidence_matches_review(anchor: dict[str, str], current_evidence: d
         if anchor.get(snippet_id) != digest:
             return False
     return True
+
+
+def _snippets_match_anchor(
+    anchor: dict[str, str],
+    snippet_ids: Iterable[str],
+    *,
+    snippet_digest_fn: Callable[[str], str],
+) -> bool:
+    """Match each snippet's current digest to the anchor, where an unresolved snippet has an empty digest.
+
+    The review anchor records only digests that resolved at review, so an ID the
+    anchor omits was unresolved then; it matches only while still unresolved.
+    """
+    return all(anchor.get(snippet_id, "") == snippet_digest_fn(snippet_id) for snippet_id in snippet_ids)
 
 
 def _review_is_within_age_window(
