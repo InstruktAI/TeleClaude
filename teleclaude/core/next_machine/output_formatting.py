@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from teleclaude.core.next_machine.commit_review_stamps import OutstandingCommit
+    from teleclaude.core.next_machine.git_ops import WorktreeMergeOutcome
     from teleclaude.core.next_machine.lifecycle import DriftResult
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "format_blocker_resolution",
     "format_error",
     "format_finalize_handoff_complete",
+    "format_merge_not_performed",
     "format_orchestration_watch_instruction",
     "format_pending_classes_for_dispatch",
     "format_plan_reconcile_note",
@@ -484,6 +486,15 @@ Read the exact amendment:
 `telec todo artifacts diff {slug} implementation-plan {old_digest} {new_digest}`
 
 Revert commits the amendment invalidates, retain commits still required by the amended plan, and continue implementation. Stamp `telec todo stamp {slug} --build-complete` only after reconciliation is complete."""
+
+
+def format_merge_not_performed(slug: str, outcome: WorktreeMergeOutcome, reason: str, head: str) -> str:
+    """State that work entry did not merge origin/main, and which HEAD the instruction below runs on."""
+    return f"""ORIGIN/MAIN NOT MERGED into {WORKTREE_DIR}/{slug}
+
+Outcome: {outcome.value}
+Reason: {reason}
+The work directed below runs on worktree HEAD {head}."""
 
 
 def format_uncommitted_changes(slug: str) -> str:
