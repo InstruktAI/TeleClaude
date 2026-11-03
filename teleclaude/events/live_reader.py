@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
@@ -16,6 +17,8 @@ logger = get_logger(__name__)
 
 _BATCH_SIZE = 100
 _RETRY_PAUSE_S = 1.0
+# While one recovery failure persists unchanged, its repeats are reported as one aggregate record per interval.
+_FAILURE_AGGREGATE_INTERVAL_S = 60.0
 _INITIAL_CURSOR = "0-0"
 _ID_SEPARATOR = "-"
 _READER_STARTED_EVENT = "live_event_reader_started"
@@ -84,6 +87,10 @@ class LiveEventReader:
         self._retired = False
         self._recovered = False
         self._skipped = False
+        self._failure_signature: tuple[type[Exception], str] | None = None
+        self._failure_repeats = 0
+        self._failure_repeats_reported = 0
+        self._failure_reported_at = 0.0
         self._batches: asyncio.Queue[StreamRows] = asyncio.Queue(maxsize=_QUEUED_BATCHES)
 
     def reset(self) -> None:
@@ -122,13 +129,37 @@ class LiveEventReader:
                 # A handler's own cancellation is its failure, not this view's end.
                 logger.exception(_READER_RECOVERING_EVENT, name=self._name, stream=self._stream)
                 self._recovered = False
-            except Exception:
-                logger.exception(_READER_RECOVERING_EVENT, name=self._name, stream=self._stream)
+            except Exception as error:
+                self._report_recovery_failure(error)
                 self._recovered = False
                 try:
                     await asyncio.wait_for(shutdown_event.wait(), timeout=_RETRY_PAUSE_S)
                 except TimeoutError:
                     pass
+
+    def _report_recovery_failure(self, error: Exception) -> None:
+        """Log a failure with its traceback once; an unchanged repeat is counted and aggregated per interval."""
+        signature = (type(error), str(error))
+        now = time.monotonic()
+        if signature != self._failure_signature:
+            self._failure_signature = signature
+            self._failure_repeats = 0
+            self._failure_repeats_reported = 0
+            self._failure_reported_at = now
+            logger.exception(_READER_RECOVERING_EVENT, name=self._name, stream=self._stream)
+            return
+        self._failure_repeats += 1
+        if now - self._failure_reported_at < _FAILURE_AGGREGATE_INTERVAL_S:
+            return
+        logger.error(
+            _READER_RECOVERING_EVENT,
+            name=self._name,
+            stream=self._stream,
+            error=repr(error),
+            repeats=self._failure_repeats - self._failure_repeats_reported,
+        )
+        self._failure_repeats_reported = self._failure_repeats
+        self._failure_reported_at = now
 
     async def _ensure_ready(self) -> None:
         """Recover current source and retire the earlier group once, before any live entry is handled."""
@@ -142,7 +173,15 @@ class LiveEventReader:
             logger.info(_POSITION_RETIRED_EVENT, name=self._name, group=self._retired_group)
         self._recovered = True
         self._skipped = False
-        logger.info(_READER_STARTED_EVENT, name=self._name, stream=self._stream)
+        logger.info(
+            _READER_STARTED_EVENT,
+            name=self._name,
+            stream=self._stream,
+            suppressed_repeats=self._failure_repeats,
+        )
+        self._failure_signature = None
+        self._failure_repeats = 0
+        self._failure_repeats_reported = 0
 
     async def _retire_group(self) -> None:
         """Destroy the retired consumer group; a stream that does not exist yet holds no group to destroy."""
