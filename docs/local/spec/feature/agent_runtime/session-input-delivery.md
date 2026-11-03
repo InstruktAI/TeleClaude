@@ -23,13 +23,7 @@ The write-side surface that lets operators, orchestrators, and other agents inje
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
 Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages make one content-independent pre-delivery observation: an empty composer receives one paste-and-submit operation, while a composer containing any input receives exactly two newlines plus the platform text and no Enter — except conversation text, which waits for an empty composer (Conversation input authority).
-<!-- planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
-
 The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
-<!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
-
-The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. The one composer comparison it makes is between two observations of the same composer — one taken between a platform paste and its submit, kept when that submit failed, and one taken at a later attempt — to tell whether anything in the composer has changed since (Target validation and delivery outcomes). Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
-<!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 ## Canonical fields
 
@@ -220,26 +214,29 @@ agent's composer, the platform never places that occurrence again, so it never
 adds a second copy of it.
 
 When the paste of that text into an empty composer completed and only its submit
-failed, the occurrence owes a submit. The platform observes the composer once
-between that paste and its submit, as the last view it acts on before its own
-submit, and when the submit fails it records what the composer held in that
-view. Each later attempt observes the composer and places nothing:
+failed, the occurrence owes a submit. The platform records the time it began
+placing the text. A person's input reaches a session's composer through a
+terminal attached to that session, and the host records the last time any
+attached terminal sent input to or attached to the session; the platform's own
+placement does not change that time. Each later attempt places nothing:
 
-- A composer identical to the recorded observation still holds only the
-  platform's text and receives one discrete submit.
+- When no attached terminal has sent input or attached since the second in which
+  the platform began placing the text, the composer holds only what the
+  platform put there. An occupied composer receives one discrete submit.
 - An empty composer means the text has already left it, so the attempt performs
   no host action and the occurrence continues exactly as one whose submit
   succeeded.
-- A composer that differs from the recorded observation, or that is occupied
-  when no observation could be recorded, may hold a person's draft. The
-  occurrence then ends as text appended unsubmitted, exactly as platform text
+- When an attached terminal has sent input or attached since that second, a
+  person has been at the composer. An occupied composer is then left as it is:
+  the occurrence ends as text appended unsubmitted, exactly as platform text
   appended to an occupied composer does, and the person decides its submission.
-- A screen with no composer leaves the submit owed for a later attempt.
+- A screen with no composer, or a host that cannot report that time, leaves the
+  submit owed for a later attempt.
 
 An owed submit is retried on the delivery-retry schedule, repeating its last
 interval, until one of those outcomes is reached or its session ends; it does
-not expire while it is owed. When conversation text for the session finds the
-composer occupied while a submit is owed, the owed submit's next attempt is made
+not expire while it is owed. New input accepted for the session, and conversation
+text held on its occupied composer, make the owed submit's next attempt happen
 at once.
 
 Any other failure after placement began is final: the occurrence ends as a failed
@@ -384,7 +381,7 @@ recovery continues to use this surface's durable accepted-input evidence.
 Given a person converses with an agent session through a conversation channel
 And platform-authored text for that session was pasted into its empty composer
 And the submit after that paste failed
-And nobody has changed that composer since
+And no terminal attached to that session has been used since
 When the person sends the agent a message
 Then the platform's text is submitted as its own turn without being pasted again
 And the person's message then reaches the agent as the next turn
