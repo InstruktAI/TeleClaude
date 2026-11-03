@@ -337,15 +337,6 @@ Then the parked set is cleared for the new drain
 And the previously parked candidate is re-attempted as an ordinary finalize-ready candidate
 ```
 
-#### UC-WISM24: An unsynced post-delivery repo root still regenerates the Blueprint
-
-```gherkin
-Given repository-root main contains the prepared candidate and its folded documentation
-When the integrator confirms that final head on origin/main and records delivery
-Then the Blueprint graph and manifest are regenerated at that confirmed commit
-And the manifest baseline_sha is the delivered origin/main commit
-```
-
 #### UC-WISM32: Delivery reconciles the candidate's pending documentation exactly once
 
 ```gherkin
