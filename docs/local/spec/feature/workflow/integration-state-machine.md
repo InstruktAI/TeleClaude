@@ -337,6 +337,8 @@ Then the parked set is cleared for the new drain
 And the previously parked candidate is re-attempted as an ordinary finalize-ready candidate
 ```
 
+#### UC-WISM24: An unsynced post-delivery repo root still regenerates the Blueprint
+
 #### UC-WISM32: Delivery reconciles the candidate's pending documentation exactly once
 
 ```gherkin

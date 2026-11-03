@@ -117,9 +117,10 @@ Blueprint.
 The maintenance action extracts an isolated snapshot of the project's committed
 baseline revision and publishes to the owning checkout's shared cache.
 Uncommitted files and branch-only work are outside that snapshot. The action
-converges to the latest baseline revision observed when it runs; an already
-current generation completes without re-extraction, so obligations queued
-behind one extraction cost no further extraction. Each obligation retains its
+converges to the latest baseline revision observed when it starts; an
+obligation whose baseline revision is already published when it runs completes
+without re-extraction, while an advance observed after an extraction started
+is extracted by a later obligation. Each obligation retains its
 activation identity, while its outcome identifies the revision actually
 extracted. A later obligation remains eligible after an earlier action ends,
 and replay converges forward rather than restoring an older cache.
@@ -244,6 +245,8 @@ And the query performs no extraction itself
 
 <!-- change:blueprint-built-in-ci -->
 
+#### UC-BP1: A query observes current maintenance before answering
+
 <!-- /planned-change:blueprint-built-in-ci -->
 
 #### UC-BP2: A slug-worktree merge preserves the shared baseline
@@ -255,21 +258,6 @@ When the agent merges upstream main into that worktree
 Then the shared Blueprint continues to reflect committed canonical main
 And no branch-only structure becomes visible to Blueprint consumers
 ```
-
-<!-- planned:blueprint-built-in-ci -->
-
-#### UC-BP3: A Blueprint behind the asking checkout still answers and names the difference
-
-```gherkin
-Given the published Blueprint was extracted from an earlier revision than the agent's checkout
-When an agent asks for the blast radius of a changed file
-Then the answer gives the dependents from the published Blueprint
-And it names the Blueprint's revision and the asking checkout's revision
-And it lists the files in which the asking checkout differs from the Blueprint's revision
-And the query performs no extraction itself
-```
-
-<!-- /planned:blueprint-built-in-ci -->
 
 ## See Also
 

@@ -171,6 +171,12 @@ concerned:
 
 <!-- /planned:github-turn-mirror -->
 
+<!-- planned:blueprint-built-in-ci -->
+
+- `local/projects/teleclaude/adr/0156-teleclaudes-blueprint-follows-remote-main-as-each-checkout-observes-it` — TeleClaude's Blueprint following remote main as each checkout observes it
+
+<!-- /planned:blueprint-built-in-ci -->
+
 - `local/projects/teleclaude/adr/0001-git-stash-prevention` — keeping test runs from leaving git stash entries
 - `local/projects/teleclaude/adr/0015-kind-as-lifecycle-entry-point` — a kind as the lifecycle entry point
 - `local/projects/teleclaude/adr/0017-review-lanes-as-dod-anchored-shared-group` — review lanes as one shared catalog

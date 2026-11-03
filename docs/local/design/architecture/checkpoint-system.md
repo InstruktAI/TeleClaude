@@ -278,11 +278,23 @@ invocation home and the homes nested beneath it when it receives a home.
 
 ### Invariant 30 — Event bindings
 
+<!-- planned-change:blueprint-built-in-ci -->
+
 Each binding declares exactly one trigger: changed paths, event types, or a
 canonical-main activation. `CheckpointBindingConfig` and its closed activation
 type own the declaration shape; the effective model keeps these trigger kinds
 separate. Activation bindings select main-only maintenance. Trigger integrity
 follows `sdlc/policy/code-quality-practices`.
+
+<!-- change:blueprint-built-in-ci -->
+
+Each binding declares exactly one trigger: changed paths, event types, or an
+activation — canonical-main or remote-main. `CheckpointBindingConfig` and its
+closed activation type own the declaration shape; the effective model keeps
+these trigger kinds separate. Activation bindings select main-only
+maintenance. Trigger integrity follows `sdlc/policy/code-quality-practices`.
+
+<!-- /planned-change:blueprint-built-in-ci -->
 
 An event binding names exact event types or group patterns resolved by the
 platform's shared event-type matcher, and owes only maintenance-registry

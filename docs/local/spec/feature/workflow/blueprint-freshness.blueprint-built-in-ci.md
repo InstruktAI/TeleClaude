@@ -37,25 +37,20 @@ consumption contract is `sdlc/spec/codebase-blueprint`.
 - **Remote-main activation.** A project that binds its Blueprint action to
   remote-main activation owes it whenever the checkout's remote-tracking main
   advances — after a push from the canonical checkout or any of its worktrees,
-  or after a fetch — and owes it on no canonical-main commit. TeleClaude
-  declares this binding. Recording and execution follow
+  or after a fetch — and owes it on no canonical-main commit. Recording and
+  execution follow
   `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
 - **Execution.** The action runs after its toolchain prerequisites. It selects
   the baseline revision when it runs, materializes that exact revision, and
-  converges the owning checkout's cache. A current generation is an idempotent
-  success, so advances recorded while an extraction runs cost no further
-  extraction. Repeated activations retain their individual maintenance
-  records.
-- **Observation.** A query pins the complete published generation and answers
-  from it, naming its revision, the baseline revision, the state of Blueprint
-  maintenance, and the files in which the asking checkout differs from it.
-  Only when no complete generation exists does it wait, within its bound, for
-  outstanding maintenance. An absent or unreadable generation yields explicit
-  unavailability and a maintenance recovery reference. Canonical and worktree
-  callers read the same generation; each answer describes its own caller's
-  difference.
+  converges the owning checkout's cache. An obligation whose baseline revision
+  is already published when it runs is an idempotent success; an advance
+  observed after an extraction started is extracted by a later obligation.
+  Repeated activations retain their individual maintenance records.
+- **Observation.** Workflow publishes the baseline selection and the state of
+  outstanding or failed Blueprint maintenance for queries to read; how a query
+  answers from them is `sdlc/spec/codebase-blueprint` (Fallback).
 - **Failure and recovery.** A failed extraction leaves the prior complete
-  generation answering and records a failed maintenance action. Retry retains
+  generation published and records a failed maintenance action. Retry retains
   the original activation identity and converges to the current baseline.
   On-demand maintenance performs the same action while preserving earlier
   failure records under its own contract, which also brings a checkout whose
@@ -70,26 +65,11 @@ maintenance substrate follow `sdlc/principle/design-fundamentals`.
 
 #### UC-BPF1: Every canonical-main advance receives automatic maintenance
 
-```gherkin
-Scenario Outline: A canonical-main activation converges the shared Blueprint
-Given a code-enabled project with installed commit-boundary maintenance
-And the project keeps the default canonical-main Blueprint binding
-When canonical main advances through <activation>
-Then an agent observing maintenance sees a Blueprint obligation for that advance
-And successful completion leaves a complete Blueprint for committed canonical main selected by the action
-
-Examples:
-| activation |
-| a source-code commit |
-| a documentation-only commit |
-| an empty commit |
-| a merge commit |
-| a fast-forward merge |
-```
-
 #### UC-BPF2: Extraction excludes uncommitted and branch-only work
 
 #### UC-BPF3: Successive activations converge without rolling the cache backward
+
+#### UC-BPF5: An agent gets no stale blast-radius answer
 
 #### UC-BPF6: Failure recovery converges forward
 
@@ -97,32 +77,16 @@ Examples:
 
 #### UC-BPF8: Projects without code do not acquire Blueprint maintenance
 
-#### UC-BPF10: A worktree started from remote main finds the Blueprint of its revision
+#### UC-BPF9: An agent retrieves Blueprint results for a person
 
-```gherkin
-Scenario Outline: A remote-main advance converges the shared Blueprint
-Given a code-enabled project binds its Blueprint maintenance to remote-main activation
-When the checkout's remote main advances through <advance>
-Then an agent observing maintenance sees a Blueprint obligation for that advance
-And successful completion leaves a complete Blueprint for the remote main revision the checkout observed
-And a commit on canonical main that is not yet pushed owes no Blueprint maintenance
+## Known caveats
 
-Examples:
-| advance |
-| a push from the canonical checkout |
-| a push from the integration worktree |
-| a fetch of revisions another computer pushed |
-```
-
-#### UC-BPF11: A Blueprint behind the asking checkout answers and names the difference
-
-```gherkin
-Given the published Blueprint was extracted from an earlier revision than an agent's slug worktree
-When the agent asks for the blast radius of a file it changed
-Then the answer gives the dependents from the published Blueprint
-And it names the Blueprint's revision and the worktree's revision
-And it lists the files in which the worktree differs from the Blueprint's revision, its own uncommitted changes included
-```
+- A release that predates remote-main activation rejects a project declaration
+  naming it and falls back to the base model, which binds Blueprint maintenance
+  to canonical-main activation and drops the rest of the project's overlay. A
+  computer running such a release, or rolled back to one, regenerates the
+  Blueprint on every canonical-main commit until it runs a release that
+  supports the declaration.
 
 ## See Also
 

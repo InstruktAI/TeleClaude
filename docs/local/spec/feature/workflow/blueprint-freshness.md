@@ -88,6 +88,8 @@ And it does not present older dependents as the current answer
 
 #### UC-BPF8: Projects without code do not acquire Blueprint maintenance
 
+#### UC-BPF9: An agent retrieves Blueprint results for a person
+
 ## See Also
 
 - docs/local/spec/domain/workflow.md — workflow ownership.
