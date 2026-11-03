@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from teleclaude.cli.telec.handlers._arg_parsing import parse_command_args
 from teleclaude.cli.telec.surface import REPO_BLUEPRINT_AFFECTED
-from teleclaude.core.blueprint.affected import AffectedResult, compute_affected, load_graph
-from teleclaude.core.blueprint.query import BlueprintQueryState, query_current_blueprint
+from teleclaude.core.blueprint.affected import AffectedResult, compute_affected, load_graph, normalize_changed
+from teleclaude.core.blueprint.query import BlueprintQueryResult, BlueprintQueryState, query_current_blueprint
 from teleclaude.core.integration.post_commit_maintenance import ON_DEMAND_MAINTENANCE_COMMAND
 from teleclaude.project_root import resolve_invocation_roots
 
@@ -16,6 +18,21 @@ _AFFECTED_USAGE = "Usage: telec repo blueprint affected <changed-files>"
 _FALLBACK_PREFIX = "blueprint unavailable — fall back to manual exploration"
 _RECOVERY_LINE = "Recover with: {reference}"
 _UNAVAILABLE_RESULT_TEMPLATE = "{prefix}: {reason}"
+_SHORT_REVISION_LENGTH = 12
+_GENERATION_LINE = "Blueprint generation: revision {revision}, generated {generated_at}"
+_BASELINE_LINE = "Maintenance baseline: {reference} at {revision}"
+_BASELINE_UNRESOLVED_LINE = "Maintenance baseline: could not be resolved ({error})"
+_MAINTENANCE_LINE = "Blueprint maintenance: {state}"
+_MAINTENANCE_UNOBSERVED = "not observed"
+_ASKING_LINE = "Asking checkout: {checkout} at HEAD {head}"
+_NO_DIFFERENCE_LINE = "The asking checkout matches the generation revision in every file."
+_DIFFERENCE_LINE = "The asking checkout differs from the generation revision in {count} file(s) (* = asked about):"
+_DIFFERENCE_UNCOMPUTED_LINE = (
+    "The difference between the asking checkout and the generation could not be computed: {error}"
+)
+_DIFFERENCE_COMMAND_LINE = "Inspect it with: git -C {checkout} diff {revision}  (untracked files are listed above only)"
+_ASKED_MARK = "*"
+_UNASKED_MARK = " "
 
 
 def handle_code_blueprint(args: list[str]) -> None:
@@ -47,6 +64,38 @@ def _format_result(result: AffectedResult, *, changed_count: int) -> str:
     return "\n".join(lines)
 
 
+def _format_header(query: BlueprintQueryResult, *, asking: Path, asked: set[str]) -> str:
+    """The facts that locate the answer: the generation, the baseline, maintenance, and the asking checkout's difference."""
+    manifest = query.manifest
+    if manifest is None:
+        return ""
+    revision = manifest.baseline_sha
+    lines = [_GENERATION_LINE.format(revision=revision[:_SHORT_REVISION_LENGTH], generated_at=manifest.generated_at)]
+    if query.baseline is not None:
+        lines.append(
+            _BASELINE_LINE.format(
+                reference=query.baseline.reference, revision=query.baseline.revision[:_SHORT_REVISION_LENGTH]
+            )
+        )
+    else:
+        lines.append(_BASELINE_UNRESOLVED_LINE.format(error=query.baseline_error))
+    state = query.maintenance_state.value if query.maintenance_state is not None else _MAINTENANCE_UNOBSERVED
+    lines.append(_MAINTENANCE_LINE.format(state=state))
+    if query.recovery_reference and query.maintenance_state is not None:
+        lines.append(_RECOVERY_LINE.format(reference=query.recovery_reference))
+    head = query.asking_head[:_SHORT_REVISION_LENGTH] if query.asking_head else _MAINTENANCE_UNOBSERVED
+    lines.append(_ASKING_LINE.format(checkout=asking, head=head))
+    if query.difference_error is not None:
+        lines.append(_DIFFERENCE_UNCOMPUTED_LINE.format(error=query.difference_error))
+    elif not query.differing_files:
+        lines.append(_NO_DIFFERENCE_LINE)
+    else:
+        lines.append(_DIFFERENCE_LINE.format(count=len(query.differing_files)))
+        lines.extend(f"  {_ASKED_MARK if path in asked else _UNASKED_MARK} {path}" for path in query.differing_files)
+        lines.append(_DIFFERENCE_COMMAND_LINE.format(checkout=asking, revision=revision))
+    return "\n".join(lines)
+
+
 def _handle_blueprint_affected(args: list[str]) -> None:
     parsed = parse_command_args(REPO_BLUEPRINT_AFFECTED, args)
     changed_files = [a for a in parsed.positionals if a]
@@ -55,9 +104,11 @@ def _handle_blueprint_affected(args: list[str]) -> None:
         print(_AFFECTED_USAGE)
         raise SystemExit(1)
 
-    state_root = resolve_invocation_roots().require_project_root()
-    query = query_current_blueprint(state_root)
-    if query.state is not BlueprintQueryState.FRESH or query.generation is None:
+    roots = resolve_invocation_roots()
+    state_root = roots.require_project_root()
+    asking = roots.repository_root
+    query = query_current_blueprint(state_root, asking)
+    if query.state is not BlueprintQueryState.ANSWERED or query.generation is None:
         print(_UNAVAILABLE_RESULT_TEMPLATE.format(prefix=_FALLBACK_PREFIX, reason=query.reason))
         if query.recovery_reference:
             print(_RECOVERY_LINE.format(reference=query.recovery_reference))
@@ -69,5 +120,8 @@ def _handle_blueprint_affected(args: list[str]) -> None:
         print(_RECOVERY_LINE.format(reference=ON_DEMAND_MAINTENANCE_COMMAND))
         return
 
-    result = compute_affected(graph, changed_files, repo_root=state_root)
+    repo_roots = (asking, state_root)
+    asked = {normalize_changed(path, repo_roots) for path in changed_files}
+    result = compute_affected(graph, changed_files, repo_roots=repo_roots)
+    print(_format_header(query, asking=asking, asked=asked))
     print(_format_result(result, changed_count=len(changed_files)))

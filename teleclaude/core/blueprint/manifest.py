@@ -1,6 +1,6 @@
 """Read and validate the freshness manifest inside one published Blueprint generation.
 
-The manifest records the committed canonical-main revision the graph describes. A
+The manifest records the committed revision the graph describes. A
 consumer pins the current-generation pointer once, then reads both files from that
 immutable directory so a pointer switch cannot pair generations.
 """
@@ -23,27 +23,6 @@ class BlueprintStatus(StrEnum):
     ERROR = "error"
 
 
-class FreshnessState(StrEnum):
-    """How the Blueprint on disk relates to the current main commit.
-
-    ``BEHIND`` means the graph was generated successfully from a known baseline
-    that is not the current main, so the gap between the two is a nameable
-    commit range. ``UNESTABLISHED`` means that a usable generation cannot be
-    named: no complete manifest, an unsuccessful status, or an unresolved main.
-    """
-
-    FRESH = "fresh"
-    BEHIND = "behind"
-    UNESTABLISHED = "unestablished"
-
-
-_REASON_MANIFEST_MISSING = "no complete Blueprint generation is published"
-_REASON_GENERATION_STATUS = "blueprint generation status is '{status}'"
-_REASON_MAIN_UNRESOLVED = "current main commit could not be resolved"
-_REASON_BEHIND = "blueprint baseline {baseline} is behind main {main}"
-_SHORT_SHA_LENGTH = 12
-
-
 @dataclass(frozen=True)
 class BlueprintManifest:
     """Freshness metadata for a generated Blueprint graph."""
@@ -58,14 +37,6 @@ class BlueprintManifest:
             "generated_at": self.generated_at,
             "status": self.status.value,
         }
-
-
-@dataclass(frozen=True)
-class Freshness:
-    """How the Blueprint relates to main, and the reason when it is not fresh."""
-
-    state: FreshnessState
-    reason: str
 
 
 def write_manifest(path: Path, manifest: BlueprintManifest) -> None:
@@ -108,25 +79,3 @@ def read_published_generation(start: str | Path) -> tuple[PinnedBlueprintGenerat
     if manifest is None or manifest.status is not BlueprintStatus.OK or load_graph(generation.graph) is None:
         return None
     return generation, manifest
-
-
-def evaluate_freshness(manifest: BlueprintManifest | None, *, current_main_sha: str | None) -> Freshness:
-    """Decide whether the Blueprint is fresh against the current main baseline."""
-    if manifest is None:
-        return Freshness(FreshnessState.UNESTABLISHED, _REASON_MANIFEST_MISSING)
-    if manifest.status is not BlueprintStatus.OK:
-        return Freshness(
-            FreshnessState.UNESTABLISHED,
-            _REASON_GENERATION_STATUS.format(status=manifest.status.value),
-        )
-    if current_main_sha is None:
-        return Freshness(FreshnessState.UNESTABLISHED, _REASON_MAIN_UNRESOLVED)
-    if manifest.baseline_sha != current_main_sha:
-        return Freshness(
-            FreshnessState.BEHIND,
-            _REASON_BEHIND.format(
-                baseline=manifest.baseline_sha[:_SHORT_SHA_LENGTH],
-                main=current_main_sha[:_SHORT_SHA_LENGTH],
-            ),
-        )
-    return Freshness(FreshnessState.FRESH, "")
