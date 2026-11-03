@@ -63,9 +63,9 @@ needs it.
      overview, a report): a page in the activity's scratchpad workspace
      (`general/procedure/scratchpad-workspace`). Its `index.html` links the
      workspace's pages, and a static web server started on the workspace
-     folder serves it. Runtimes that detect local web servers offer it to the
-     human at once, on every device the runtime reaches; revising the page and
-     refreshing shows the change.
+     folder serves it, so the human can open it from the surface they work
+     in, where the runtime makes local servers reachable; revising the page
+     and refreshing shows the change.
 
    The source from step 3 stays where it lives; the rendered page is what the
    human reads. Hand them something that opens, never a file path on a machine

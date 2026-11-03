@@ -86,7 +86,7 @@ contributors; the index is a map to the work, not a session diary
    (`general/spec/scratchpad-workspaces`).
    3a. **Give the workspace a page a human reads.** Every workspace carries an
    `index.html`, served from the workspace folder
-   (`general/procedure/visualizing-for-humans`, step 4), with rendered pages
+   (`general/procedure/visualizing-for-humans`), with rendered pages
    for its files. Make it beautiful, and make it work for its reader:
    - a reader sees at a glance what is there, visuals first;
    - every section says whether it is a picture or text, so text can be skipped;
