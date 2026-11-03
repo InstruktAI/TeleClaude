@@ -791,7 +791,7 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> WorktreeMe
             WorktreeMergeOutcome.DEFERRED_UNCOMMITTED,
             head_before,
             head_before,
-            _EMPTY_SHA,
+            "The worktree has uncommitted changes.",
         )
 
     try:
