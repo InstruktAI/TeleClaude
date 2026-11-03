@@ -44,11 +44,29 @@ that the current Gherkin differs from the linked Git snapshot, not a demand to
 migrate source metadata.
 <!-- /planned:code-uc-blueprint-traceability -->
 
+<!-- planned-change:blueprint-built-in-ci -->
+
 2. Use the command's freshness-checked result. The command observes outstanding
    maintenance before answering, under `sdlc/spec/codebase-blueprint`. When it
    reports the Blueprint unavailable, state the gap and explore the affected
    files manually. Follow the maintenance recovery reference it supplies when
    recovery is part of the session's work.
+
+<!-- change:blueprint-built-in-ci -->
+
+2. Read the difference the answer names before relying on it. The answer
+   gives the Blueprint's revision and the files in which your checkout differs
+   from it (`sdlc/spec/codebase-blueprint`). A Blueprint a few revisions behind
+   your checkout is still the starting point: read the listed files you are
+   changing and the listed files in the area you are changing directly, and
+   add the dependents they reveal to the candidate set. When the difference reaches so much of the area you are
+   changing that the dependents no longer describe it, set the answer aside,
+   say so, and explore that area manually. When it reports the Blueprint
+   unavailable, state the gap and explore the affected files manually. Follow
+   the maintenance recovery reference it supplies when recovery is part of the
+   session's work.
+
+<!-- /planned-change:blueprint-built-in-ci -->
 
 3. Treat the returned dependents as candidates, not an oracle. Verify each
    against the source and decide relevance; bias to over-inclusion — a missed

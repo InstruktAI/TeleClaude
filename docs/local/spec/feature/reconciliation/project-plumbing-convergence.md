@@ -10,6 +10,8 @@ visibility: internal
 
 ## What it is
 
+<!-- planned-change:blueprint-built-in-ci -->
+
 A project's installed git plumbing is machine state: the TeleClaude-owned
 `pre-commit`, `pre-merge-commit`, `post-commit`, `post-merge` and `pre-push`
 hooks under the git directory and the `teleclaude-docs` filter driver in the
@@ -17,6 +19,21 @@ repository's own git config. Neither is tracked by the project, so a clone
 carries neither. The `pre-merge-commit` hook runs the same commit gate as
 `pre-commit`, so a merge commit git creates without a separate `git commit`
 passes that gate too (`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`).
+
+<!-- change:blueprint-built-in-ci -->
+
+A project's installed git plumbing is machine state: the TeleClaude-owned
+`pre-commit`, `pre-merge-commit`, `post-commit`, `post-merge`, `pre-push` and
+`reference-transaction` hooks under the git directory and the `teleclaude-docs`
+filter driver in the repository's own git config. Neither is tracked by the
+project, so a clone carries neither. The `pre-merge-commit` hook runs the same
+commit gate as `pre-commit`, so a merge commit git creates without a separate
+`git commit` passes that gate too
+(`local/projects/teleclaude/spec/feature/agent_runtime/sealed-commit`). The
+`reference-transaction` hook records remote-main activations
+(`local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`).
+
+<!-- /planned-change:blueprint-built-in-ci -->
 
 The project's configuration-schema link is machine state in the same way: a
 symbolic link in the project's machine-local state directory, which the project
