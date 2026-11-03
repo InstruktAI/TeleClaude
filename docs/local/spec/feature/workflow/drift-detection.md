@@ -836,8 +836,8 @@ Scenario: origin/main advances past a cosmetic code-drift verdict without touchi
   on the unchanged PRD, contrary to the re-derivation contract. A prepare call
   that reaches `prepared` while an artifact's drift is still `substantive`
   answers with a re-run instruction without re-applying the review
-  invalidation, so such a Todo repeats that answer until the artifact is
-  rewritten.
+  invalidation, so such a Todo repeats that answer for as long as its
+  routing state and drift evidence stay unchanged.
 
 <!-- change:substantive-prd-drift-skips-intake -->
 <!-- /planned-change:substantive-prd-drift-skips-intake -->
