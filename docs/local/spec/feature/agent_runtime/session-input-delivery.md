@@ -23,7 +23,13 @@ The write-side surface that lets operators, orchestrators, and other agents inje
 - **Raw key command** — used for special keys (Enter, Backspace, arrow keys, Tab, Ctrl-C, etc.) and key repeats via a count argument; routed through the command mapper / command service.
 
 Both paths use the host-pane orchestration layer's paste/key primitives. Raw key commands invoke the key-injection primitive directly. Active-agent structured messages make one content-independent pre-delivery observation: an empty composer receives one paste-and-submit operation, while a composer containing any input receives exactly two newlines plus the platform text and no Enter — except conversation text, which waits for an empty composer (Conversation input authority).
+<!-- planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
 The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
+<!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
+The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. The one composer comparison it makes is between two observations of the same composer — one recorded after a platform paste whose submit failed and one taken at a later attempt — to tell whether anything in the composer has changed since (Target validation and delivery outcomes). Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
+<!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 ## Canonical fields
 
@@ -214,18 +220,33 @@ agent's composer, the platform never places that occurrence again, so it never
 adds a second copy of it.
 
 When the paste of that text into an empty composer completed and only its submit
-failed, the occurrence owes a submit. Each later attempt on the delivery-retry
-schedule observes the composer and places nothing: an occupied composer receives
-one discrete submit; an empty composer means the text has already left it, so
-the attempt performs no host action and the occurrence continues exactly as one
-whose submit succeeded; and a screen with no composer holds the attempt. When the attempts run out with the submit still owed, the
-occurrence ends as a failed delivery and its text stays in the composer.
+failed, the occurrence owes a submit. The platform then observes the composer
+once it has settled and records what the composer holds. Each later attempt
+observes the composer and places nothing:
+
+- A composer identical to the recorded observation still holds only the
+  platform's text and receives one discrete submit.
+- An empty composer means the text has already left it, so the attempt performs
+  no host action and the occurrence continues exactly as one whose submit
+  succeeded.
+- A composer that differs from the recorded observation, or that is occupied
+  when no observation could be recorded, may hold a person's draft. The
+  occurrence then ends as text appended unsubmitted, exactly as platform text
+  appended to an occupied composer does, and the person decides its submission.
+- A screen with no composer leaves the submit owed for a later attempt.
+
+An owed submit is retried on the delivery-retry schedule, repeating its last
+interval, until one of those outcomes is reached or its session ends; it does
+not expire while it is owed. When conversation text for the session finds the
+composer occupied while a submit is owed, the owed submit's next attempt is made
+at once.
 
 Any other failure after placement began is final: the occurrence ends as a failed
 delivery, the platform submits nothing on its behalf, and what the begun placement
 left in the composer is uncertain and stays as it is. A terminal delivery notice
-sent for a failure after placement began never says the input did not reach the
-agent. Conversation text keeps its own path, waiting on an occupied composer.
+for an occurrence whose placement began, including one whose session ends while
+its submit is owed, never says the input did not reach the agent. Conversation
+text keeps its own path, waiting on an occupied composer.
 
 A delivery result reports each host effect it performed: a paste that completed
 is reported as performed even when the submit after it failed.
@@ -356,15 +377,16 @@ recovery continues to use this surface's durable accepted-input evidence.
 
 <!-- planned:fix-a-platform-wake-whose-tmux-submit-timed -->
 
-#### UC-SID23: Platform text whose submit failed after its paste is submitted, not left behind
+#### UC-SID23: A person's message is not held behind platform text whose submit failed
 
 ```gherkin
-Given queue-backed platform-authored text was pasted into a running agent's empty composer
-And the submit that followed the paste failed
-When the occurrence's next delivery attempt finds that text still in the composer
-Then the platform sends one discrete submit and pastes nothing
-And the agent receives the occurrence as one turn
-And conversation text held behind that composer is delivered once the composer is empty
+Given a person converses with an agent session through a conversation channel
+And platform-authored text for that session was pasted into its empty composer
+And the submit after that paste failed
+And nobody has changed that composer since
+When the person sends the agent a message
+Then the platform's text is submitted as its own turn without being pasted again
+And the person's message then reaches the agent as the next turn
 ```
 
 <!-- /planned:fix-a-platform-wake-whose-tmux-submit-timed -->
