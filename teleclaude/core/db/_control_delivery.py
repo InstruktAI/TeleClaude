@@ -312,6 +312,17 @@ class DbControlDeliveryMixin:
             ).one()
         return int(value)
 
+    async def fetch_sessions_with_pending_procedure_events(self) -> list[str]:
+        """Return the sessions holding at least one pending procedure event assigned to them."""
+        statement = (
+            select(db_models.ProcedureEventInbox.assigned_session_id)
+            .where(db_models.ProcedureEventInbox.assigned_session_id.is_not(None))
+            .where(db_models.ProcedureEventInbox.outcome == db_models.ProcedureEventDeliveryOutcome.PENDING.value)
+            .distinct()
+        )
+        async with self._session() as db_session:
+            return [session_id for session_id in (await db_session.exec(statement)).all() if session_id is not None]
+
     async def fail_procedure_responsibility_events(self, *, responsibility_key: str, reason: str) -> int:
         """Terminalize retained work when its responsibility cannot continue."""
         async with self._session() as db_session:

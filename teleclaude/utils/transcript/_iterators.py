@@ -27,7 +27,7 @@ from teleclaude.core.session_transcript import SessionTranscript
 
 from ._checkpoint_anchors import find_last_checkpoint_anchor
 from ._parsers import normalize_transcript_entry_message
-from ._turn_completion import TURN_COMPLETION_TAIL_ENTRIES, claude_turn_completion
+from ._turn_completion import TURN_COMPLETION_TAIL_ENTRIES, claude_turn_completion, codex_turn_completion
 from ._user_turns import find_last_turn_start, is_turn_start_entry
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _apply_tail_limit, _apply_tail_limit_codex, _parse_timestamp
 from .source_views import TranscriptEntries, read_transcript_entries
@@ -929,6 +929,7 @@ TRANSCRIPT_READERS: Mapping[AgentName, TranscriptReader] = MappingProxyType(
             _codex_checkpoint_window,
             _normalize_codex_entries,
             append_anchor=_codex_append_anchor,
+            turn_completion=codex_turn_completion,
         ),
         AgentName.GEMINI: TranscriptReader(
             "Gemini",
