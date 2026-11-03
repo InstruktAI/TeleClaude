@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
@@ -35,6 +34,7 @@ type StreamRows = list[tuple[bytes, StreamEntry]]
 type StreamBatch = list[tuple[bytes, StreamRows]]
 type LiveHandler = Callable[[StreamEvent], Awaitable[object]]
 type SourceRecovery = Callable[[], Awaitable[None]]
+type Clock = Callable[[], float]
 
 
 class LiveStreamClient(Protocol):
@@ -73,6 +73,7 @@ class LiveEventReader:
         name: str,
         retired_group: str,
         codec: EntryCodec[StreamEvent],
+        clock: Clock,
         recover: SourceRecovery | None = None,
         coalesce: bool = False,
     ) -> None:
@@ -82,6 +83,7 @@ class LiveEventReader:
         self._name = name
         self._retired_group = retired_group
         self._codec = codec
+        self._clock = clock
         self._recover = recover
         self._coalesce = coalesce
         self._retired = False
@@ -140,7 +142,7 @@ class LiveEventReader:
     def _report_recovery_failure(self, error: Exception) -> None:
         """Log a failure with its traceback once; an unchanged repeat is counted and aggregated per interval."""
         signature = (type(error), str(error))
-        now = time.monotonic()
+        now = self._clock()
         if signature != self._failure_signature:
             self._failure_signature = signature
             self._failure_repeats = 0

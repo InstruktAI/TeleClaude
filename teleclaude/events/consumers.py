@@ -9,6 +9,7 @@ attributes, and handlers receive the event rather than its transport state.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -163,6 +164,7 @@ def _live_view(
         name=consumer.name,
         retired_group=consumer_group_name(consumer.name, computer),
         codec=codec,
+        clock=time.monotonic,
         recover=consumer.recover,
         coalesce=consumer.coalesce,
     )
