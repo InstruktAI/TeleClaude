@@ -721,8 +721,9 @@ async def _apply_drift_reviewed_stamp(
     bootstrap = not entry.async_provenance_complete
     # A cosmetic verdict reviews the todo's current owned snippets. When an owned snippet changed identity after
     # provenance was captured, the recorded keys can never be compared with that review, so the verdict could never
-    # settle the class. Re-key the baseline to the reviewed set, unless an owned ID is unresolvable (fail-safe: stays
-    # pending). A substantive verdict is not re-keyed: it routes to re-derivation and the rewrite re-captures provenance.
+    # settle the class. Re-key the baseline to the reviewed set, unless an owned ID is unresolvable (no re-key; the
+    # anchor comparison then decides the class). A substantive verdict is not re-keyed: it routes to re-derivation and
+    # the rewrite re-captures provenance.
     rekey_owned = (
         not bootstrap
         and verdict == DRIFT_COSMETIC
