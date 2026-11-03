@@ -28,7 +28,7 @@ Both paths use the host-pane orchestration layer's paste/key primitives. Raw key
 The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
 <!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
-The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. The one composer comparison it makes is between two observations of the same composer — one recorded after a platform paste whose submit failed and one taken at a later attempt — to tell whether anything in the composer has changed since (Target validation and delivery outcomes). Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
+The delivery path never compares, reconstructs, hashes, or searches composer text against the accepted payload. The one composer comparison it makes is between two observations of the same composer — one taken between a platform paste and its submit, kept when that submit failed, and one taken at a later attempt — to tell whether anything in the composer has changed since (Target validation and delivery outcomes). Voice, file, result, widget, and escalate flows live next door but belong to integration/messaging — see "Known caveats".
 <!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 ## Canonical fields
@@ -220,9 +220,10 @@ agent's composer, the platform never places that occurrence again, so it never
 adds a second copy of it.
 
 When the paste of that text into an empty composer completed and only its submit
-failed, the occurrence owes a submit. The platform then observes the composer
-once it has settled and records what the composer holds. Each later attempt
-observes the composer and places nothing:
+failed, the occurrence owes a submit. The platform observes the composer once
+between that paste and its submit, as the last view it acts on before its own
+submit, and when the submit fails it records what the composer held in that
+view. Each later attempt observes the composer and places nothing:
 
 - A composer identical to the recorded observation still holds only the
   platform's text and receives one discrete submit.
