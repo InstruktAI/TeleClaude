@@ -738,18 +738,22 @@ async def _work_step_review_approved(
             )
         )
 
-    session_id = get_session_id() or ""
     home = home_for_project_path(cwd)
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     round_raw = build_review.get("round", 0)
     review_round = round_raw if isinstance(round_raw, int) else 0
+    reviewer_raw = build_review.get("caller_session_id", "")
+    reviewer_session_id = reviewer_raw if isinstance(reviewer_raw, str) else ""
+    reviewed_at_raw = build_review.get("reviewed_at", "")
+    reviewed_at = reviewed_at_raw if isinstance(reviewed_at_raw, str) else ""
     try:
         await emit_review_approved(
             slug=slug,
-            reviewer_session_id=session_id,
+            reviewer_session_id=reviewer_session_id,
             review_round=max(review_round, 1),
             home=home,
+            approved_at=reviewed_at,
         )
     except Exception:
         logger.warning("Failed to emit review.approved event for %s", slug, exc_info=True)
