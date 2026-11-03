@@ -57,16 +57,6 @@ Publication is one of those steps and keeps its own contract
   stands. A dirty checkout is reported before the first step, including paths
   and known holders, and every step still runs.
 
-<!-- planned-change:blueprint-built-in-ci -->
-
-- **Blueprint recovery.** A code-enabled project's declared steps include
-  Blueprint maintenance. The run converges its shared cache to committed
-  canonical main under `sdlc/spec/codebase-blueprint`. An already current cache
-  completes without extraction; failure is a failed step. Existing recorded
-  activation failures retain the earlier-failure reporting contract below.
-
-<!-- change:blueprint-built-in-ci -->
-
 - **Blueprint recovery.** A code-enabled project's declared steps include
   Blueprint maintenance. The run converges its shared cache to the project's
   baseline revision under `sdlc/spec/codebase-blueprint`: committed canonical
@@ -74,8 +64,6 @@ Publication is one of those steps and keeps its own contract
   Blueprint maintenance to remote-main activation. An already current cache
   completes without extraction; failure is a failed step. Existing recorded
   activation failures retain the earlier-failure reporting contract below.
-
-<!-- /planned-change:blueprint-built-in-ci -->
 
 - **Plumbing.** Every project's steps include converging that project's own
   plumbing, whatever else its declaration carries.

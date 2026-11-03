@@ -1,6 +1,5 @@
 ---
-description: Automatic canonical-main Blueprint maintenance and transparent current-baseline
-  queries through the shared maintenance executor.
+description: Automatic Blueprint maintenance on the project's declared baseline — canonical main by default, remote main where the project binds it — and queries that answer from the published Blueprint while naming how the asking checkout differs from it.
 visibility: internal
 ---
 
@@ -12,37 +11,51 @@ visibility: internal
 
 ## What it is
 
-Agents receive structural blast-radius answers for committed canonical main
-without arranging generation. The workflow-owned maintenance executor converges
-the shared Blueprint after every canonical-main activation and supplies its
-failure and recovery outcomes. The general baseline and consumption contract is
-`sdlc/spec/codebase-blueprint`.
+Agents receive structural blast-radius answers without arranging generation.
+The workflow-owned maintenance executor converges the shared Blueprint to the
+project's baseline after each activation the project binds it to and supplies
+its failure and recovery outcomes. Every answer says which revision it reflects
+and how the asking checkout differs from it. The general baseline and
+consumption contract is `sdlc/spec/codebase-blueprint`.
 
 ## Canonical fields
 
-- **Owner.** Workflow owns canonical-main activation, queued maintenance, and
-  recovery. The Blueprint's structural extraction and affected traversal retain
-  their existing owner and graph data seam. This boundary follows
+- **Owner.** Workflow owns activation, queued maintenance, and recovery. The
+  Blueprint's structural extraction and affected traversal retain their
+  existing owner and graph data seam. This boundary follows
   `sdlc/policy/domain-ownership`.
-- **Activation.** A code-enabled project owes Blueprint maintenance on every
-  canonical-main commit and merge, including an empty commit. Canonical-root
-  integration activation uses the same executor as a direct commit. Worktree
-  branches consume the shared cache without activating it.
-- **Execution.** The action runs after its toolchain prerequisites and before
-  daemon restart. It selects committed canonical main, materializes that exact
-  revision, and converges the owning checkout's cache. A current generation is
-  an idempotent success. Repeated activations can share an already extracted
-  current revision while retaining their individual maintenance records.
-- **Observation.** A successful query pins one complete generation matching
-  committed canonical main at its freshness observation. Pending maintenance is
-  observed within the query's bounded wait. Failure, missing maintenance, or
-  expiry yields explicit unavailability and a maintenance recovery reference.
-  Both canonical and worktree callers receive this guarantee.
+- **Baseline selection.** The project's effective checkpoint model decides the
+  baseline: when its Blueprint action is bound to remote-main activation, the
+  baseline is the checkout's remote-tracking main; otherwise it is committed
+  canonical main. Extraction, the query's report of the current baseline,
+  replay and on-demand recovery all read that one selection.
+- **Canonical-main activation.** By default a code-enabled project owes
+  Blueprint maintenance on every canonical-main commit and merge, including an
+  empty commit. Canonical-root integration activation uses the same executor
+  as a direct commit. Worktree branches consume the shared cache without
+  activating it.
+- **Remote-main activation.** A project that binds its Blueprint action to
+  remote-main activation owes it whenever the checkout's remote-tracking main
+  advances — after a push from the canonical checkout or any of its worktrees,
+  or after a fetch — and owes it on no canonical-main commit. Recording and
+  execution follow
+  `local/projects/teleclaude/spec/feature/integration/post-commit-maintenance`.
+- **Execution.** The action runs after its toolchain prerequisites. It selects
+  the baseline revision when it runs, materializes that exact revision, and
+  converges the owning checkout's cache. An obligation whose baseline revision
+  is already published when it runs is an idempotent success; an advance
+  observed after an extraction started is extracted by a later obligation.
+  Repeated activations retain their individual maintenance records.
+- **Observation.** Workflow publishes the baseline selection and the state of
+  outstanding or failed Blueprint maintenance for queries to read; how a query
+  answers from them is `sdlc/spec/codebase-blueprint` (Fallback).
 - **Failure and recovery.** A failed extraction leaves the prior complete
-  generation intact and records a failed maintenance action. Retry retains the
-  original activation identity and converges to current committed main.
+  generation published and records a failed maintenance action. Retry retains
+  the original activation identity and converges to the current baseline.
   On-demand maintenance performs the same action while preserving earlier
-  failure records under its own contract. Query observation starts no writer.
+  failure records under its own contract, which also brings a checkout whose
+  remote-tracking main has not advanced since the binding was declared to its
+  baseline. Query observation starts no writer.
 
 Execution serialization and coherent publication follow
 `sdlc/policy/code-quality-practices`; failure visibility and reuse of the
@@ -52,35 +65,11 @@ maintenance substrate follow `sdlc/principle/design-fundamentals`.
 
 #### UC-BPF1: Every canonical-main advance receives automatic maintenance
 
-```gherkin
-Scenario Outline: A canonical-main activation converges the shared Blueprint
-Given a code-enabled project with installed commit-boundary maintenance
-When canonical main advances through <activation>
-Then an agent observing maintenance sees a Blueprint obligation for that advance
-And successful completion leaves a complete Blueprint for committed canonical main selected by the action
-
-Examples:
-| activation |
-| a source-code commit |
-| a documentation-only commit |
-| an empty commit |
-| a merge commit |
-| a fast-forward merge |
-```
-
 #### UC-BPF2: Extraction excludes uncommitted and branch-only work
 
 #### UC-BPF3: Successive activations converge without rolling the cache backward
 
 #### UC-BPF5: An agent gets no stale blast-radius answer
-
-```gherkin
-Given an agent asks for the structural dependents of a changed file
-And no complete Blueprint matching the requested checkout's current baseline can be established
-When the query returns
-Then it reports the result as unavailable with the applicable maintenance recovery reference
-And it does not present older dependents as the current answer
-```
 
 #### UC-BPF6: Failure recovery converges forward
 
@@ -89,6 +78,15 @@ And it does not present older dependents as the current answer
 #### UC-BPF8: Projects without code do not acquire Blueprint maintenance
 
 #### UC-BPF9: An agent retrieves Blueprint results for a person
+
+## Known caveats
+
+- A release that predates remote-main activation cannot read a project
+  declaration naming it, and treats the overlay as unreadable
+  (`local/projects/teleclaude/design/architecture/checkpoint-system`,
+  Invariant 22). A computer running such a release, or rolled back to one,
+  therefore regenerates the Blueprint on every canonical-main commit until it
+  runs a release that supports the declaration.
 
 ## See Also
 
@@ -99,3 +97,5 @@ And it does not present older dependents as the current answer
   manual recovery and earlier-failure reporting.
 - docs/local/design/architecture/checkpoint-system.md —
   shared action selection and execution boundaries.
+- docs/local/adr/0156-teleclaudes-blueprint-follows-remote-main-as-each-checkout-observes-it.md —
+  why TeleClaude follows remote main.

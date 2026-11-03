@@ -62,23 +62,12 @@ contract governs only what happens when maintenance runs.
   files. The immutable-range and source-preservation requirements follow
   `sdlc/policy/version-control-safety`.
 
-<!-- planned-change:blueprint-built-in-ci -->
-
-- **Blueprint.** In code-enabled projects, every canonical-main activation
-  owes the Blueprint action. Its committed snapshot, current-query guarantee,
-  and recovery are owned by `sdlc/spec/codebase-blueprint` and realized by
-  `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
-
-<!-- change:blueprint-built-in-ci -->
-
 - **Blueprint.** In code-enabled projects, every canonical-main activation
   owes the Blueprint action, unless the project binds that action to
   remote-main activation, which then owes it instead. Its committed snapshot,
   query guarantee, and recovery are owned by `sdlc/spec/codebase-blueprint` and
   realized by
   `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
-
-<!-- /planned-change:blueprint-built-in-ci -->
 
 - **Location.** Maintenance performs the owed `main_only` actions from canonical
   main. A detached development clone, an integration worktree and an
@@ -191,8 +180,6 @@ contract governs only what happens when maintenance runs.
   An event activation records no integrator judgment: the maintenance an advance
   of canonical main owes is that advance's own activation.
 
-<!-- planned:blueprint-built-in-ci -->
-
 - **Remote-main activations.** The executor also performs the actions a
   project's remote-main activation bindings owe when the checkout's
   remote-tracking main advances. The reference-transaction hook observes the
@@ -210,8 +197,6 @@ contract governs only what happens when maintenance runs.
   is replayed with `telec repo maintenance retry` for its original
   remote-main activation, and `telec repo maintenance status` names each one
   with that replay.
-
-<!-- /planned:blueprint-built-in-ci -->
 
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary
