@@ -48,15 +48,6 @@ Execution serialization and coherent publication follow
 `sdlc/policy/code-quality-practices`; failure visibility and reuse of the
 maintenance substrate follow `sdlc/principle/design-fundamentals`.
 
-### Installed release baseline
-
-For an installed release checkout under
-`local/projects/teleclaude/spec/feature/reconciliation/release-checkout`, the
-maintenance source query selects the installed commit. Extraction, query
-freshness and replay use that same selection. A different local main tip does
-not change the installed checkout's baseline. The canonical-main rules above
-remain the baseline for other projects and checkouts.
-
 ### Use cases
 
 #### UC-BPF1: Every canonical-main advance receives automatic maintenance
@@ -96,16 +87,6 @@ And it does not present older dependents as the current answer
 #### UC-BPF7: On-demand recovery reuses the maintenance action
 
 #### UC-BPF8: Projects without code do not acquire Blueprint maintenance
-
-#### UC-BPF9: An agent retrieves Blueprint results for a person
-
-```gherkin
-Scenario: Use the installed release as the query baseline
-  Given an agent acts for person X using an installed release whose source differs from local main
-  When the agent asks for the Blueprint affected view of a changed file
-  Then the result for person X reflects the installed release's source
-  And changes present only in local main do not affect the result
-```
 
 ## See Also
 
