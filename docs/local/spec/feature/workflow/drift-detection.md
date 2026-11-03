@@ -341,6 +341,8 @@ than fabricating a route.
 
 For a valid substantive stamp:
 
+<!-- planned-change:substantive-prd-drift-skips-intake -->
+
 - X's review verdict is cleared (architecture-review or plan-review, as
   applicable).
 - Every downstream artifact's review verdict is cleared (a substantive
@@ -358,11 +360,34 @@ For a valid substantive stamp:
 - Routing returns to X's **drafting** phase, not its review phase, even
   though X's artifact is still present on disk.
 
+<!-- change:substantive-prd-drift-skips-intake -->
+
+- X's review verdict is cleared (prd-review, architecture-review or
+  plan-review, as applicable).
+- Every downstream artifact's review verdict is cleared (a substantive
+  PRD drift invalidates architecture and plan; substantive architecture
+  drift invalidates plan).
+- The PRD-approved gate is **not** re-opened by drift on the PRD's
+  downstream evidence (code/snippets). It IS re-opened when the PRD
+  artifact itself is rewritten through intent-level refinement (its live
+  digest diverges from `approved_digest`; see `prepare-flow#refinement`).
+  This supersedes a legacy approval that bound no `approved_digest` and one
+  that recorded no `approved_at`; a re-approval whose `approved_at` is at or
+  after the PRD rewrite resolves it.
+- The drift-reviewed stamps for X are cleared (so re-derived X earns a
+  fresh evidence anchor on its next analyze pass).
+- Routing returns to X's **drafting** phase, not its review phase, even
+  though X's artifact is still present on disk.
+
+<!-- /planned-change:substantive-prd-drift-skips-intake -->
+
 The phase-derivation mechanism that distinguishes "verdict cleared by
 substantive drift (needs re-draft)" from "verdict never approved (needs
 first review)" or "verdict cleared by reviewer needs_work (needs author
 fix inside the existing review loop)" is an explicit marker on the
 review state:
+
+<!-- planned-change:substantive-prd-drift-skips-intake -->
 
 - The verdict-state record (for `architecture_review` and `plan_review`)
   gains a `cleared_by_substantive_drift` boolean (default `false`). The
@@ -379,6 +404,26 @@ review state:
   the rewrite, the next prepare call sees a present artifact, a cleared
   verdict, and a cleared marker — which routes to the review phase for
   a fresh review, on the new artifact.
+
+<!-- change:substantive-prd-drift-skips-intake -->
+
+- The verdict-state record (for `prd_review`, `architecture_review` and
+  `plan_review`) gains a `cleared_by_substantive_drift` boolean (default
+  `false`). The marker is set in the same commit that clears the verdict
+  due to a substantive `--drift-reviewed` stamp.
+- The phase-derivation helpers for the feature and plan-only lanes
+  consult the marker before treating an artifact-present + unapproved-verdict
+  state as "ready for review." When the marker is `true`, derivation
+  returns the corresponding `*_DRAFTING` phase. When `false`, derivation
+  returns `*_REVIEW` (existing behavior).
+- The marker is cleared automatically when the artifact is rewritten
+  (`telec todo artifacts write` — same boundary that re-captures
+  provenance and clears drift-reviewed stamps for the artifact). After
+  the rewrite, the next prepare call sees a present artifact, a cleared
+  verdict, and a cleared marker — which routes to the review phase for
+  a fresh review, on the new artifact.
+
+<!-- /planned-change:substantive-prd-drift-skips-intake -->
 
 The marker does not affect any existing flow that does not involve
 substantive drift; default `false` makes the derivation behavior
