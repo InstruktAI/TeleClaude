@@ -81,19 +81,27 @@ def _parse_line(source_location: object) -> int | None:
     return int(digits) if digits.isdigit() else None
 
 
-def _normalize_changed(path: str, repo_root: Path) -> str:
-    """Normalize a changed-file path to the repo-root-relative POSIX form graph nodes use."""
+def normalize_changed(path: str, repo_roots: tuple[Path, ...]) -> str:
+    """Normalize a changed-file path to the repo-root-relative POSIX form graph nodes use.
+
+    An absolute path is made relative to the first root that contains it, so a path inside a linked
+    worktree resolves against that worktree and one inside the project checkout against the checkout.
+    """
     p = Path(path)
     if p.is_absolute():
-        try:
-            return p.relative_to(repo_root).as_posix()
-        except ValueError:
-            return p.as_posix()
+        for repo_root in repo_roots:
+            try:
+                return p.relative_to(repo_root).as_posix()
+            except ValueError:
+                continue
+        return p.as_posix()
     return Path(path).as_posix()
 
 
 # guard: loose-dict-func - untrusted graph.json from the external graphify engine; every field is runtime-validated within
-def compute_affected(graph: dict[str, object], changed_files: list[str], *, repo_root: Path) -> AffectedResult:
+def compute_affected(
+    graph: dict[str, object], changed_files: list[str], *, repo_roots: tuple[Path, ...]
+) -> AffectedResult:
     """Compute the union blast radius of ``changed_files`` over the graph.
 
     Maps each changed file to the node-ids it defines (seeds), runs an unbounded
@@ -127,7 +135,7 @@ def compute_affected(graph: dict[str, object], changed_files: list[str], *, repo
         if isinstance(source, str) and isinstance(target, str):
             reverse_adj[target].append(source)
 
-    normalized_changed = {_normalize_changed(f, repo_root) for f in changed_files}
+    normalized_changed = {normalize_changed(f, repo_roots) for f in changed_files}
     unmatched = sorted(f for f in normalized_changed if f not in files_with_nodes)
 
     seed_ids: set[str] = set()

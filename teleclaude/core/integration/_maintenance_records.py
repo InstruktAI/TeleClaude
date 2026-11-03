@@ -1,4 +1,4 @@
-"""Private persistence and lock owner for maintenance records of commit and event activations."""
+"""Private persistence and lock owner for maintenance records of commit, event and remote-main activations."""
 
 from __future__ import annotations
 
@@ -6,11 +6,13 @@ import fcntl
 import json
 import os
 import tempfile
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import IO
 
 from pydantic import BaseModel, ConfigDict
 
@@ -25,10 +27,16 @@ _DRAIN_LOCK_FILENAME = "drain.lock"
 _RECORD_SUFFIX = ".json"
 _RECORD_GLOB = "*.json"
 _ACTIVATION_RECORD_GLOB = "*/*.json"
+# Remote-main records live one directory deeper than every other kind, so a release that predates the kind
+# never lists them: its record glob stops at the first level and its strict wire models are never asked to parse one.
+_REMOTE_MAIN_DIRECTORY = "remote-main"
+_REMOTE_MAIN_RECORD_GLOB = f"{_REMOTE_MAIN_DIRECTORY}/*/*.json"
+_REMOTE_MAIN_AFTER_FIELD = "remote_after_sha"
 _EVENT_FILENAME = "event.payload"
 _EVENT_KEY_PREFIX = "event-"
 _EVENT_ID_FIELD = "event_id"
 _LOCK_MODE = "a+"
+_LOCK_POLL_SECONDS = 0.05
 _ACTIVATION_REGISTRATION_LOCK_FILENAME = "activation-registration.lock"
 _TEXT_ENCODING = "utf-8"
 _NEWLINE = "\n"
@@ -61,6 +69,21 @@ class _EventRecordPayload(BaseModel):
 
     event_id: str
     event_type: str
+    action_id: str
+    queued_at: str
+    state: str
+    exit_code: int | None
+    finished_at: str | None
+    output_tail: str | None
+
+
+class _RemoteMainRecordPayload(BaseModel):
+    """Closed wire model for one persisted action record of a remote-main activation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    remote_before_sha: str | None
+    remote_after_sha: str
     action_id: str
     queued_at: str
     state: str
@@ -137,7 +160,15 @@ class EventActivation:
     event_type: str
 
 
-type MaintenanceActivation = ActivationRange | EventActivation
+@dataclass(frozen=True)
+class RemoteMainActivation:
+    """The remote-main advancement an activation answers: the revision this checkout observed before and after."""
+
+    before_sha: str | None
+    after_sha: str
+
+
+type MaintenanceActivation = ActivationRange | EventActivation | RemoteMainActivation
 
 
 class SettlementOutcome(StrEnum):
@@ -166,7 +197,7 @@ class PendingSettlement:
 
 @dataclass(frozen=True)
 class MaintenanceActionRecord:
-    """One durable action obligation for an immutable commit range or a recorded event."""
+    """One durable action obligation for an immutable commit range, a recorded event or a remote-main advancement."""
 
     activation: MaintenanceActivation
     action_id: str
@@ -183,13 +214,35 @@ def maintenance_directory(project_root: str | Path) -> Path:
     return root / _STATE_DIRECTORY / _MAINTENANCE_DIRECTORY
 
 
+def _acquire_exclusive(handle: IO[str], wait_seconds: float | None) -> None:
+    """Take the exclusive lock, waiting without bound or raising ``TimeoutError`` once ``wait_seconds`` have passed."""
+    if wait_seconds is None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("the registration lock stayed held past the bounded wait") from None
+            time.sleep(_LOCK_POLL_SECONDS)
+
+
 @contextmanager
-def maintenance_activation_registration_lock(project_root: str | Path) -> Iterator[None]:
-    """Serialize activation record registration with the drain's final empty-record boundary."""
+def maintenance_activation_registration_lock(
+    project_root: str | Path, *, wait_seconds: float | None = None
+) -> Iterator[None]:
+    """Serialize activation record registration with the drain's final empty-record boundary.
+
+    A caller that cannot wait without bound passes ``wait_seconds`` and gets ``TimeoutError`` when the lock
+    stays held that long.
+    """
     lock_path = maintenance_directory(project_root) / _ACTIVATION_REGISTRATION_LOCK_FILENAME
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open(_LOCK_MODE, encoding=_TEXT_ENCODING) as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        _acquire_exclusive(handle, wait_seconds)
         try:
             yield
         finally:
@@ -307,10 +360,17 @@ def event_activation_key(event_id: str) -> str:
     return safe_path_component(_EVENT_KEY_PREFIX + event_id)
 
 
+def remote_main_activation_key(after_sha: str) -> str:
+    """Name the record directory of the remote-main activation that ends at ``after_sha``."""
+    return f"{_REMOTE_MAIN_DIRECTORY}/{safe_path_component(after_sha)}"
+
+
 def activation_key(activation: MaintenanceActivation) -> str:
     """Name the record directory of an activation, which is also how a record is addressed for replay."""
     if isinstance(activation, EventActivation):
         return event_activation_key(activation.event_id)
+    if isinstance(activation, RemoteMainActivation):
+        return remote_main_activation_key(activation.after_sha)
     return commit_activation_key(activation.after_sha)
 
 
@@ -363,9 +423,22 @@ def _write_atomically(path: Path, text: str) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
-def _record_payload(record: MaintenanceActionRecord) -> _CommitRecordPayload | _EventRecordPayload:
+def _record_payload(
+    record: MaintenanceActionRecord,
+) -> _CommitRecordPayload | _EventRecordPayload | _RemoteMainRecordPayload:
     """The closed wire model of a record, for the kind of activation it answers."""
     activation = record.activation
+    if isinstance(activation, RemoteMainActivation):
+        return _RemoteMainRecordPayload(
+            remote_before_sha=activation.before_sha,
+            remote_after_sha=activation.after_sha,
+            action_id=record.action_id,
+            queued_at=record.queued_at,
+            state=record.state.value,
+            exit_code=record.exit_code,
+            finished_at=record.finished_at,
+            output_tail=record.output_tail,
+        )
     if isinstance(activation, EventActivation):
         return _EventRecordPayload(
             event_id=activation.event_id,
@@ -415,6 +488,8 @@ def _record_from_text(path: Path, text: str) -> MaintenanceActionRecord:
 
 def _record_from_document(document: object) -> MaintenanceActionRecord:
     """Validate a record document against the closed wire model of its activation kind."""
+    if isinstance(document, dict) and _REMOTE_MAIN_AFTER_FIELD in document:
+        return _record_from_remote_main_payload(_RemoteMainRecordPayload.model_validate(document))
     if isinstance(document, dict) and _EVENT_ID_FIELD in document:
         event_payload = _EventRecordPayload.model_validate(document)
         return _record_from_event_payload(event_payload)
@@ -455,12 +530,25 @@ def _record_from_event_payload(payload: _EventRecordPayload) -> MaintenanceActio
     )
 
 
+def _record_from_remote_main_payload(payload: _RemoteMainRecordPayload) -> MaintenanceActionRecord:
+    return MaintenanceActionRecord(
+        activation=RemoteMainActivation(before_sha=payload.remote_before_sha, after_sha=payload.remote_after_sha),
+        action_id=payload.action_id,
+        queued_at=payload.queued_at,
+        state=MaintenanceRecordState(payload.state),
+        exit_code=payload.exit_code,
+        finished_at=payload.finished_at,
+        output_tail=payload.output_tail,
+    )
+
+
 def read_records(project_root: str | Path) -> tuple[MaintenanceActionRecord, ...]:
     """Read the checkout's action records in stable path order."""
     directory = maintenance_directory(project_root)
     if not directory.exists():
         return ()
-    listed = (_read_listed_record(path) for path in sorted(directory.glob(_ACTIVATION_RECORD_GLOB)))
+    paths = sorted((*directory.glob(_ACTIVATION_RECORD_GLOB), *directory.glob(_REMOTE_MAIN_RECORD_GLOB)))
+    listed = (_read_listed_record(path) for path in paths)
     return tuple(record for record in listed if record is not None)
 
 

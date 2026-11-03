@@ -4,6 +4,7 @@ import os
 from enum import StrEnum
 from pathlib import Path
 
+from teleclaude.core.reconciliation.live_surfaces import through_current
 from teleclaude.core.reconciliation.template_installation import render_template
 from teleclaude.git import GitCommandError, Repo
 
@@ -13,19 +14,22 @@ _PREMERGE_COMMIT_NAME = "pre-merge-commit"
 _POSTCOMMIT_NAME = "post-commit"
 _POSTMERGE_NAME = "post-merge"
 _PREPUSH_NAME = "pre-push"
+_REFERENCE_TRANSACTION_NAME = "reference-transaction"
 _PRECOMMIT_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _PRECOMMIT_NAME
 _PREMERGE_COMMIT_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _PREMERGE_COMMIT_NAME
 _POSTCOMMIT_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _POSTCOMMIT_NAME
 _POSTMERGE_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _POSTMERGE_NAME
 _PREPUSH_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _PREPUSH_NAME
+_REFERENCE_TRANSACTION_SOURCE = _HOOK_TEMPLATE_DIRECTORY / _REFERENCE_TRANSACTION_NAME
+_REFERENCE_TRANSACTION_FILTER = Path(__file__).resolve().parents[1] / "hooks" / "reference_transaction_filter.py"
 _HOOK_SOURCES: tuple[tuple[str, Path], ...] = (
     (_PRECOMMIT_NAME, _PRECOMMIT_SOURCE),
     (_PREMERGE_COMMIT_NAME, _PREMERGE_COMMIT_SOURCE),
     (_POSTCOMMIT_NAME, _POSTCOMMIT_SOURCE),
     (_POSTMERGE_NAME, _POSTMERGE_SOURCE),
     (_PREPUSH_NAME, _PREPUSH_SOURCE),
+    (_REFERENCE_TRANSACTION_NAME, _REFERENCE_TRANSACTION_SOURCE),
 )
-_EMPTY_TEMPLATE_VALUES: dict[str, str] = {}
 _UTF8 = "utf-8"
 _TELECLAUDE_SENTINEL = b"# teleclaude:"
 _GIT_PATH_ARGUMENT = "--git-path"
@@ -90,6 +94,8 @@ def install_code_hooks(project_root: Path) -> dict[str, HookConvergenceOutcome]:
     rendered_sources: dict[str, bytes | None] = {}
     # guard: direct-env-read - allowed: configuration loading or interpolation
     environment = os.environ
+    # The hook names the filter through ``current`` so a pruned release never leaves it pointing at nothing.
+    template_values = {"reference_transaction_filter": str(through_current(_REFERENCE_TRANSACTION_FILTER))}
     for hook_name, source_path in _HOOK_SOURCES:
         if not source_path.exists():
             rendered_sources[hook_name] = None
@@ -97,7 +103,7 @@ def install_code_hooks(project_root: Path) -> dict[str, HookConvergenceOutcome]:
         rendered_sources[hook_name] = render_template(
             source_path.read_text(encoding=_UTF8),
             template=source_path,
-            values=_EMPTY_TEMPLATE_VALUES,
+            values=template_values,
             environ=environment,
         ).encode(_UTF8)
 

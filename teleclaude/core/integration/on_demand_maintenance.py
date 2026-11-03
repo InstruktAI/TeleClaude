@@ -30,6 +30,7 @@ from teleclaude.core.integration._maintenance_records import (
     EventActivation,
     MaintenanceActionRecord,
     MaintenanceRecordState,
+    RemoteMainActivation,
     maintenance_drain_lock,
     read_records,
 )
@@ -382,6 +383,12 @@ def _report_earlier_failures(root: Path, emit: Callable[[str], None]) -> None:
                     event_id=activation.event_id,
                     command=command,
                 )
+            )
+        elif isinstance(activation, RemoteMainActivation):
+            emit(
+                f"{record.action_id} failed in an earlier run for the remote-main advancement to "
+                f"{activation.after_sha[:_SHORT_COMMIT_LENGTH]}. Recovery reference: {command}. "
+                "The standing integrator owns that replay."
             )
         else:
             emit(

@@ -506,11 +506,12 @@ class CheckpointActivation(StrEnum):
     """Closed activation events that can select main-only maintenance."""
 
     CANONICAL_MAIN = "canonical_main"
+    REMOTE_MAIN = "remote_main"
 
 
 @dataclass(frozen=True)
 class CheckpointActivationBinding:
-    """Maps one canonical-main activation to the maintenance action ids it owes."""
+    """Maps one main-branch activation to the maintenance action ids it owes."""
 
     activation: CheckpointActivation
     actions: tuple[str, ...]
@@ -521,7 +522,7 @@ class CheckpointModel:
     """The effective checkpoint and maintenance registries plus shared bindings.
 
     ``bindings`` are selected by changed paths, ``event_bindings`` by event type, and
-    ``activation_bindings`` by a canonical-main activation.
+    ``activation_bindings`` by a canonical-main or remote-main activation.
     """
 
     actions: dict[str, CheckpointAction]
