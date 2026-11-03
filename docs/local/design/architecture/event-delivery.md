@@ -214,16 +214,16 @@ one without the daemon's record learns that the cluster Redis is away from its
 own failed append. Local events never enter the outbox.
 
 The outbox is the only copy of what it holds. Its entries leave it only by being
-forwarded, never by trimming. A hold is acknowledged to its producer only once
-the local Redis has written it to disk under its append-only persistence
-(declared by the installation's local Redis configuration), so a held event
-survives a restart or crash of the daemon or of that Redis. A hold the local
-Redis cannot confirm is a publication failure. A local Redis the operator
-configured is never reconfigured for this: when it cannot confirm that a write
-is on disk, the computer holds nothing, as below, and its event platform logs
-at startup why. A computer whose
-local events share the cluster Redis has no outbox: there a cluster event that
-cannot be appended fails at its producer.
+forwarded, never by trimming. On the local Redis the installation manages, a
+hold is acknowledged to its producer only once that Redis has written it to disk
+under its append-only persistence (declared by the installation's local Redis
+configuration), so a held event survives a restart or crash of the daemon or of
+that Redis; a hold it cannot confirm is a publication failure. A local Redis the
+operator configured is never reconfigured: a hold on it is acknowledged once it
+confirms the hold on disk where it can, and otherwise once written, kept as
+durably as that Redis's own persistence keeps it, which the event platform names
+at startup. A computer whose local events share the cluster Redis has no
+outbox: there a cluster event that cannot be appended fails at its producer.
 
 The daemon's forwarder empties the outbox once the record says the cluster
 Redis answers. It appends the held events to their streams in the order they
@@ -234,18 +234,11 @@ relayed event is claimed in the same atomic step as its forwarded append, as at
 publication; one whose claim another receipt of the same delivery already took
 leaves the outbox without being appended.
 
-Forwarding keeps to what retained consumers can still read. It appends in
-bounded batches, and before each batch it waits while a consumer group on the
-target stream would have entries it has not yet read trimmed out of the
-stream's retained window by the batch. Every group holds forwarding back except
-one that counts as away. A group counts as away only when, for a full expiry
-window of the transport's heartbeat registry
-(`local/projects/teleclaude/design/architecture/redis-transport`) since the
-cluster Redis answered again, both hold: its computer has been absent from the
-registry, and its reader has not read the stream. A consumer that is still
-handling what it read, or that resumed after the outage before its computer's
-heartbeat returned, therefore holds forwarding back. A computer that stays away
-is released after that window, so it cannot stall forwarding.
+The cluster streams keep entries by age, not by count: every computer trims
+them of entries older than their retention age, and a forwarded append trims
+nothing. A backlog forwarded at once therefore pushes no entry out of a stream,
+and a retained consumer that reads within the retention age handles every
+entry, forwarded or not, however large the backlog was.
 
 ```mermaid
 flowchart LR
@@ -253,7 +246,7 @@ flowchart LR
     Q -->|yes| A[Append to cluster stream]
     A -->|fails: not answering| O
     Q -->|no| O[Hold in outbox<br/>on local Redis]
-    O --> F[Forwarder: once the cluster Redis answers,<br/>append in held order, paced by consumer-group room]
+    O --> F[Forwarder: once the cluster Redis answers,<br/>append in held order, without trimming]
     F --> A2[Cluster stream]
     F --> R[Remove from outbox after acceptance]
 ```
@@ -390,14 +383,11 @@ ordering guarantee for these separate transports.
   Redis refuses is a publication failure.
 - While this computer holds events, its own consumers of the cluster stream
   receive them only once they are forwarded.
-- A consumer on a live computer that stops reading while its unread entries
-  fill the retained window holds forwarding until it reads again or counts as
-  away; the held events wait, and are not lost. A consumer that counts as away
-  while a backlog is forwarded can have unread entries trimmed out of the
-  window; it recovers what the window still holds, as for any consumer that is
-  away. One running consumer can count as away: one whose reader handles a
-  single batch for the whole expiry window after the outage, on a computer
-  whose heartbeat has not returned within that window.
+- The cluster Redis holds what the fleet published within the retention age,
+  forwarded backlogs included, so its memory grows with the publication rate
+  and with the backlogs forwarded inside that age.
+- While a computer of an earlier release still trims the cluster streams by
+  count, its appends can trim a forwarded backlog before a consumer reads it.
 - A daemon that starts while a Redis is away, with no earlier loss on record,
   reports it away since its own start.
 
