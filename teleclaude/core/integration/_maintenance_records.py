@@ -14,6 +14,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import IO
 
+from instrukt_ai_logging import get_logger
 from pydantic import BaseModel, ConfigDict
 
 from teleclaude.checkpoint_model import ActivationRange
@@ -45,6 +46,9 @@ _ACTIVATION_REGISTRATIONS_FILENAME = "activation-registrations.json"
 _MAX_ACTIVATION_REGISTRATIONS = 512
 _PENDING_SETTLEMENTS_FILENAME = "pending-settlements.json"
 _PENDING_SETTLEMENTS_LOCK_FILENAME = "pending-settlements.lock"
+_RETIRED_HELD_STATE = "held"
+
+logger = get_logger(__name__)
 
 
 class _CommitRecordPayload(BaseModel):
@@ -462,8 +466,11 @@ def _record_payload(
     )
 
 
-def read_record(path: Path) -> MaintenanceActionRecord:
-    """Read one typed record from its durable JSON form, migrating an older record forward first."""
+def read_record(path: Path) -> MaintenanceActionRecord | None:
+    """Read one typed record from its durable JSON form, migrating an older record forward first.
+
+    ``None`` means the stored document was a retired obligation, now removed.
+    """
     return _record_from_text(path, path.read_text(encoding=_TEXT_ENCODING))
 
 
@@ -477,8 +484,17 @@ def _read_listed_record(path: Path) -> MaintenanceActionRecord | None:
     return _record_from_text(path, text)
 
 
-def _record_from_text(path: Path, text: str) -> MaintenanceActionRecord:
+def _record_from_text(path: Path, text: str) -> MaintenanceActionRecord | None:
     document = json.loads(text)
+    if _is_retired_obligation(document):
+        remove_record(path)
+        logger.info(
+            "maintenance_retired_record_removed",
+            path=str(path),
+            action_id=path.stem,
+            retired_state=_RETIRED_HELD_STATE,
+        )
+        return None
     upcast = _upcast_record_document(document)
     record = _record_from_document(upcast)
     if upcast is not document:
@@ -494,6 +510,18 @@ def _record_from_document(document: object) -> MaintenanceActionRecord:
         event_payload = _EventRecordPayload.model_validate(document)
         return _record_from_event_payload(event_payload)
     return _record_from_commit_payload(_CommitRecordPayload.model_validate(document))
+
+
+def _is_retired_obligation(document: object) -> bool:
+    """Recognize a record of the restart obligation that the daemon window held, in either wire shape.
+
+    The window and its ``held`` state were retired without bringing stored records forward. Such a
+    record has nothing left to do and its outcome fields are always null, so the forward migration
+    is its removal: the current lifecycle represents "nothing left to do" as an absent record.
+
+    Remove once no record written before the ``held`` state's removal can remain on any computer.
+    """
+    return isinstance(document, dict) and document.get("state") == _RETIRED_HELD_STATE
 
 
 def _upcast_record_document(document: object) -> object:
