@@ -19,7 +19,7 @@ from teleclaude.core.integration.post_commit_maintenance import (
     ON_DEMAND_MAINTENANCE_COMMAND,
     MaintenanceObservationState,
     observe_maintenance_action,
-    selected_maintenance_revision,
+    selected_maintenance_baseline,
 )
 from teleclaude.core.project_state import resolve_project_state_root
 from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, NoSuchPathError
@@ -138,7 +138,7 @@ def query_current_blueprint(project_root: str | Path) -> BlueprintQueryResult:
 def _fresh_generation(root: Path) -> BlueprintQueryResult:
     """Pin a generation and verify main did not advance across its freshness observation."""
     try:
-        observed_main_sha = selected_maintenance_revision(root)
+        observed_main_sha = selected_maintenance_baseline(root).revision
     except (OSError, ValueError, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, BadName):
         return BlueprintQueryResult(
             state=BlueprintQueryState.MAIN_UNRESOLVED,
@@ -158,7 +158,7 @@ def _fresh_generation(root: Path) -> BlueprintQueryResult:
 
     generation, manifest = published
     try:
-        latest_main_sha = selected_maintenance_revision(root)
+        latest_main_sha = selected_maintenance_baseline(root).revision
     except (OSError, ValueError, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, BadName):
         return BlueprintQueryResult(
             state=BlueprintQueryState.MAIN_UNRESOLVED,

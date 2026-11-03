@@ -1,4 +1,4 @@
-"""Execute Blueprint refresh as a canonical-main maintenance action."""
+"""Execute Blueprint refresh as a main-only maintenance action."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from teleclaude.core.blueprint.generate import (
     generate_committed_blueprint,
 )
 from teleclaude.core.blueprint.manifest import read_published_generation
-from teleclaude.core.integration.post_commit_maintenance import selected_maintenance_revision
+from teleclaude.core.integration.post_commit_maintenance import selected_maintenance_baseline
 from teleclaude.core.project_state import resolve_project_state_root
 
 logger = get_logger(__name__)
@@ -25,12 +25,12 @@ _MAINTENANCE_FAILED_EVENT = "blueprint_maintenance_failed"
 
 
 def run_blueprint_maintenance(project_root: str | Path, *, trigger_revision: str | None) -> None:
-    """Converge the owning checkout's shared graph to the selected committed source: committed main, or the commit a release installation runs."""
+    """Converge the owning checkout's shared graph to the committed source its declaration selects."""
     root = resolve_project_state_root(project_root)
     selected_revision: str | None = None
     try:
         with blueprint_generation_lock(root, wait=True):
-            selected_revision = selected_maintenance_revision(root)
+            selected_revision = selected_maintenance_baseline(root).revision
             logger.info(
                 _MAINTENANCE_STARTED_EVENT,
                 trigger_revision=trigger_revision,

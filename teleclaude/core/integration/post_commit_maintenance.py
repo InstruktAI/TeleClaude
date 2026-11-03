@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.checkpoint_model import (
     ActivationRange,
+    activation_action_ids,
     fill_activation_range,
     fill_event_activation,
     load_checkpoint_model,
@@ -22,6 +23,7 @@ from teleclaude.checkpoint_model import (
 )
 from teleclaude.config.errors import ConfigLoadError, describe_load_error
 from teleclaude.constants import (
+    BLUEPRINT_MAINTENANCE_ACTION_ID,
     CheckpointActivation,
     CheckpointModel,
     MaintenanceAction,
@@ -77,6 +79,7 @@ _GIT_DIFF_TREE_ARGUMENTS = ("--root", "--no-commit-id", _GIT_NAME_ONLY_ARGUMENT,
 _FULL_COMMIT_ID_PATTERN = re.compile(r"[0-9a-f]{40,64}")
 _MAIN_BRANCH_NAME = "main"
 _CANONICAL_MAIN_REFERENCE = "refs/heads/main"
+_REMOTE_MAIN_REFERENCE = "refs/remotes/origin/main"
 _GIT_COUNT_FLAG = "--count"
 _PUBLISHER_MODULE = "teleclaude.core.integration.post_commit_maintenance"
 _MAINTENANCE_RECORDED_EVENT = "post_commit_maintenance_recorded"
@@ -90,7 +93,7 @@ _MAINTENANCE_ACTION_INTERRUPTED_EVENT = "post_commit_maintenance_action_interrup
 _MAINTENANCE_ACTION_RETRIED_EVENT = "post_commit_maintenance_action_retried"
 _MAINTENANCE_RESOLVED_EVENT = "post_commit_maintenance_resolved"
 _MAINTENANCE_SKIPPED_EVENT = "post_commit_maintenance_skipped"
-_INELIGIBLE_LOCATION_DETAIL = "{root} is neither the canonical checkout on main nor the installed release checkout"
+_INELIGIBLE_LOCATION_DETAIL = "{root} is not the canonical checkout on main"
 _INVALID_RANGE_DETAIL = "the activation range is not a literal range of the checked-out source"
 _REFUSAL_NOTICE = "Maintenance for this activation was not recorded ({reason}): {detail}. Run {command} to perform it."
 _UNKNOWN_ACTION_EXIT_CODE = 127
@@ -168,14 +171,32 @@ def refusal_notice(recording: ActivationRecording) -> str | None:
     )
 
 
-def selected_maintenance_revision(project_root: Path) -> str:
-    """Resolve the committed source maintenance answers to, from the owning checkout including worktree callers.
+@dataclass(frozen=True)
+class SelectedBaseline:
+    """The committed source Blueprint maintenance converges to: which baseline, its reference, and its revision."""
 
-    Maintenance answers to the committed main tip of the project's own checkout; no installed release
-    is a maintenance root.
+    activation: CheckpointActivation
+    reference: str
+    revision: str
+
+
+def selected_maintenance_baseline(project_root: Path) -> SelectedBaseline:
+    """Resolve the committed source Blueprint maintenance answers to, from the owning checkout including worktree callers.
+
+    The project's effective declaration decides: a Blueprint bound to remote-main activation follows
+    the ``origin/main`` revision this checkout observed, every other project follows its local main.
+    Extraction, the query and replay all read this one selection.
     """
     root = resolve_project_state_root(project_root)
-    return Repo(str(root)).commit(_CANONICAL_MAIN_REFERENCE).hexsha
+    remote_main_bound = BLUEPRINT_MAINTENANCE_ACTION_ID in activation_action_ids(
+        maintenance_model(root), CheckpointActivation.REMOTE_MAIN
+    )
+    activation, reference = (
+        (CheckpointActivation.REMOTE_MAIN, _REMOTE_MAIN_REFERENCE)
+        if remote_main_bound
+        else (CheckpointActivation.CANONICAL_MAIN, _CANONICAL_MAIN_REFERENCE)
+    )
+    return SelectedBaseline(activation, reference, Repo(str(root)).commit(reference).hexsha)
 
 
 def maintenance_model(project_root: Path) -> CheckpointModel:
