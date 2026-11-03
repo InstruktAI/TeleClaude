@@ -17,9 +17,11 @@ from teleclaude.core.integration._maintenance_records import (
     EventActivation,
     MaintenanceActionRecord,
     MaintenanceRecordState,
+    RemoteMainActivation,
     activation_key,
     commit_activation_key,
     event_activation_key,
+    remote_main_activation_key,
 )
 from teleclaude.core.integration.post_commit_maintenance import (
     MaintenanceStatus,
@@ -31,7 +33,9 @@ from teleclaude.core.integration.post_commit_maintenance import (
 from teleclaude.project_root import resolve_invocation_roots
 
 _USAGE = "Usage: telec repo maintenance {status|drain|retry}"
-_RETRY_USAGE = "Usage: telec repo maintenance retry (--after-sha <sha> | --event-id <id>) --action <id>"
+_RETRY_USAGE = (
+    "Usage: telec repo maintenance retry (--after-sha <sha> | --event-id <id> | --remote-main-sha <sha>) --action <id>"
+)
 _NO_ACTION_RECORDS = "No outstanding or failed maintenance action records."
 _NO_JUDGMENT_MARKER = "No integrator judgment is pending."
 _MISSING_VALUE = "none"
@@ -98,12 +102,22 @@ def _retry(args: list[str]) -> None:
     parsed = parse_command_args(REPO_MAINTENANCE_RETRY, args)
     after_values = parsed.values(F.FLAG_MAINTENANCE_AFTER_SHA)
     event_values = parsed.values(F.FLAG_MAINTENANCE_EVENT_ID)
+    remote_main_values = parsed.values(F.FLAG_MAINTENANCE_REMOTE_MAIN_SHA)
     action_values = parsed.values(F.FLAG_MAINTENANCE_ACTION)
-    if parsed.positionals or len(after_values) + len(event_values) != 1 or len(action_values) != 1:
+    if (
+        parsed.positionals
+        or len(after_values) + len(event_values) + len(remote_main_values) != 1
+        or len(action_values) != 1
+    ):
         print(_RETRY_USAGE, file=sys.stderr)
         raise SystemExit(2)
     root = _invocation_root()
-    key = commit_activation_key(after_values[0]) if after_values else event_activation_key(event_values[0])
+    if after_values:
+        key = commit_activation_key(after_values[0])
+    elif remote_main_values:
+        key = remote_main_activation_key(remote_main_values[0])
+    else:
+        key = event_activation_key(event_values[0])
     action_id = action_values[0]
     status = maintenance_status(root)
     failed_record = next(
@@ -154,6 +168,8 @@ def _activation_line(record: MaintenanceActionRecord) -> str:
         return _EVENT_ACTIVATION_LINE.format(
             event_type=activation.event_type, event_id=activation.event_id, queued_at=record.queued_at
         )
+    if isinstance(activation, RemoteMainActivation):
+        return f"Remote-main activation {activation.after_sha} (queued {record.queued_at})"
     return _ACTIVATION_LINE.format(after_sha=activation.after_sha, queued_at=record.queued_at)
 
 

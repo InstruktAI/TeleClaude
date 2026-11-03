@@ -9,7 +9,7 @@ merged declaration only; no consumer recreates path or capability policy.
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -356,6 +356,18 @@ def _scope_from_cfg(scope_cfg: object) -> CheckpointScope:
     )
 
 
+def _without_actions(
+    bindings: list[CheckpointActivationBinding], action_ids: Iterable[str]
+) -> list[CheckpointActivationBinding]:
+    """Drop the named actions from every activation binding, and any binding left with none."""
+    dropped = frozenset(action_ids)
+    return [
+        CheckpointActivationBinding(binding.activation, retained)
+        for binding in bindings
+        if (retained := tuple(action for action in binding.actions if action not in dropped))
+    ]
+
+
 def merge_overlay(
     base: CheckpointModel,
     overlay: object | None,
@@ -370,7 +382,10 @@ def merge_overlay(
     the ``code`` kind adds a binding onto which ``test`` / ``log-check`` attach;
     generic bindings append their declared scope → action-id lists, and a binding
     that names ``events`` joins the event bindings instead, so every reader of
-    ``bindings`` sees path bindings only. ``{slug}`` is filled across every action.
+    ``bindings`` sees path bindings only. An overlay activation binding takes its named
+    actions out of every base activation binding before it is appended, so a declared
+    activation decides the trigger instead of adding a second one. ``{slug}`` is filled
+    across every action.
     """
     actions = {action_id: _fill_slug(action, project_slug) for action_id, action in base.actions.items()}
     maintenance = {
@@ -378,7 +393,8 @@ def merge_overlay(
     }
     bindings: list[CheckpointBinding] = list(base.bindings)
     event_bindings: list[CheckpointEventBinding] = list(base.event_bindings)
-    activation_bindings: list[CheckpointActivationBinding] = list(base.activation_bindings)
+    base_activation_bindings: list[CheckpointActivationBinding] = list(base.activation_bindings)
+    overlay_activation_bindings: list[CheckpointActivationBinding] = []
 
     if overlay is not None:
         for action_id, action_cfg in (getattr(overlay, "actions", None) or {}).items():
@@ -421,7 +437,8 @@ def merge_overlay(
 
         for binding_cfg in getattr(overlay, "bindings", None) or []:
             if binding_cfg.activation is not None:
-                activation_bindings.append(
+                base_activation_bindings = _without_actions(base_activation_bindings, binding_cfg.actions)
+                overlay_activation_bindings.append(
                     CheckpointActivationBinding(
                         activation=binding_cfg.activation,
                         actions=tuple(binding_cfg.actions),
@@ -438,6 +455,8 @@ def merge_overlay(
                 bindings.append(
                     CheckpointBinding(scope=_scope_from_cfg(binding_cfg.scope), actions=tuple(binding_cfg.actions))
                 )
+
+    activation_bindings = [*base_activation_bindings, *overlay_activation_bindings]
 
     if not capabilities.code:
         maintenance.pop(BLUEPRINT_MAINTENANCE_ACTION_ID, None)
