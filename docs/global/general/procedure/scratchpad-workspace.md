@@ -84,6 +84,11 @@ contributors; the index is a map to the work, not a session diary
    to its own conduct belong in session or workflow records; retain only a
    resulting design constraint, finding or concrete handoff dependency here
    (`general/spec/scratchpad-workspaces`).
+   3a. **Make the workspace readable for the human.** When a human participates,
+   the workspace carries an `index.html` that renders the index and links a
+   rendered page for each file a human reads, served from the workspace folder
+   (`general/procedure/visualizing-for-humans`, step 4). The markdown files
+   stay the source; regenerate the pages when they change.
 4. **Name files for what they hold, never for their version.** Revise in place.
    When a rework must keep its predecessor, give the new file a descriptive name
    and mark the old one `superseded by <file>` in the index.
