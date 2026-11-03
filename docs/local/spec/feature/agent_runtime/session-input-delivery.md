@@ -217,9 +217,8 @@ When the paste of that text into an empty composer completed and only its submit
 failed, the occurrence owes a submit. Each later attempt on the delivery-retry
 schedule observes the composer and places nothing: an occupied composer receives
 one discrete submit; an empty composer means the text has already left it, so
-the attempt performs no host action and the occurrence is treated as submitted,
-marked delivered like any submitted occurrence only once bound to its native
-transcript entry; and a screen with no composer holds the attempt. When the attempts run out with the submit still owed, the
+the attempt performs no host action and the occurrence continues exactly as one
+whose submit succeeded; and a screen with no composer holds the attempt. When the attempts run out with the submit still owed, the
 occurrence ends as a failed delivery and its text stays in the composer.
 
 Any other failure after placement began is final: the occurrence ends as a failed
