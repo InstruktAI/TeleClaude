@@ -104,7 +104,9 @@ and carry the input repairs it identifies into Step 2.
    artifact's writers; read every writer that is not this session, including a
    writer the record does not name. A user entry outside any complete recognized
    platform envelope is a human's own turn (`general/policy/message-identity-headers`).
-   Record what was compared and what came of it. A writer whose conversation
+   Record what was compared and what came of it. When the conversation shows
+   the input captured the human's intent wrongly, bring it back to the human
+   rather than repairing it. A writer whose conversation
    cannot be read is recorded and handled as `sdlc/procedure/lifecycle/review`
    Step 0 states for a producing conversation; `input` stays the basis.
 3. Derive the work from that basis by kind — the outcome and constraints for
