@@ -62,8 +62,9 @@ documentation; a third-party snippet is written only when it earns its place
    behavior, observe it: create a throwaway resource, exercise the behavior,
    capture the evidence — the request and response, the command and its
    output — and remove the resource. Never test against live data or a
-   resource you did not create. Record each resource you create and its
-   removal where your run keeps its record (a spike's `log`).
+   resource you did not create. Before creating a resource, record what you
+   are about to create and the identity you will find it by where your run
+   keeps its record (a spike's `log`), then record its removal there.
 
 5. **Separate facts from hypotheses.** A fact is either read from a cited
    authoritative source or observed in a live test you ran. Everything else —

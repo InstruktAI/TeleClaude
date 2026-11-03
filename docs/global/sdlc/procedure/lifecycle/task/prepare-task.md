@@ -105,11 +105,12 @@ A `kind=spike` todo is prepared here as well, as the pre-authorized task
 `sdlc/spec/todo-kind-spike` defines. Steps 0, 1, 3 and 5 apply as written; the
 others are replaced:
 
-- **Instead of Step 2 — reject what a spike cannot do.** If answering the
-  question needs a repository change outside the project's third-party
-  documentation and exploration home, or a test against live data, do not
-  draft a `task-plan`: record in the `log` what the question needs and that the
-  todo is misclassified, and stop.
+- **Instead of Step 2 — reject what a spike cannot do.** If the todo asks for
+  a repository change outside the project's third-party documentation and
+  exploration home, do not draft a `task-plan`: record in the `log` what it asks
+  for and that the todo is misclassified, and stop. A question whose behavior
+  can only be observed on live data is still a spike: plan it as research
+  without that test, so the run records the behavior as unverified.
 - **Instead of Step 4 — draft the spike's plan.** The `task-plan` states the
   question in the upstream party's terms and the party it concerns; the
   decision and the todo waiting on the answer; that the run follows

@@ -35,8 +35,10 @@ changes are its project's third-party documentation and exploration home.
 1. **Stamp the start, then read the evidence.** Stamp this firing's start with
    `telec todo stamp {slug} --task-firing-started`, then read the `log`. You may
    be a revival with no memory of an earlier attempt
-   (`general/principle/continuity`); resources a previous attempt recorded as
-   created and not yet removed are yours to remove before anything else.
+   (`general/principle/continuity`). Every resource a previous attempt recorded
+   as about to be created and not as removed may exist: find it by the
+   identity the record names, remove it if it exists, and record the outcome
+   before anything else.
 
 2. **Read the plan and load the research procedure it names.** Read the
    `task-plan`: the question, the upstream party, and the decision and todo
@@ -46,19 +48,19 @@ changes are its project's third-party documentation and exploration home.
 3. **Test only on what you create.** A live test runs against throwaway
    resources the run creates itself — a scratch repository, a test project, a
    sandbox account resource — never against live data or a resource it did not
-   create. Record each resource in the `log` as you create it, remove it when
-   its test is done, and record the removal.
+   create. Before creating a resource, record in the `log` what you are about
+   to create and the identity you will find it by, so an interrupted creation
+   stays recoverable; remove it when its test is done, and record the removal.
 
 4. **Record the findings where they belong.** Place each verified fact by the
    placement rule of `general/spec/third-party-docs`: a project-specific
    finding in the project's third-party documentation, a reusable one in the
    global third-party documentation. Write each fact with when and how it was
    verified, and keep hypotheses apart from it. A global finding whose source
-   lives in another project travels by the cross-project documentation route
-   (`general/policy/documentation-discipline`): write the complete content to
-   temporary files, relay their paths to a session you start in the owning
-   project, and wait until it reports the content applied and committed.
-   Append the exploration trail to the subject's file in the exploration home
+   lives in another project reaches it by the cross-project documentation route
+   of `general/policy/documentation-discipline`, which carries your complete
+   content to a session in the owning project; the spike waits until that route
+   confirms the content applied. Append the exploration trail to the subject's file in the exploration home
    (`general/spec/exploration-home`).
 
 5. **Commit the two homes, and only them.** Before committing, confirm the
@@ -84,8 +86,9 @@ changes are its project's third-party documentation and exploration home.
    and approved and every throwaway resource is removed; a gap you could not
    verify is recorded, not an error. Stamp `error` with a reason only for a
    blocker that needs a human — a resource you cannot remove, a test that needs
-   access only a human can grant. The stamps and their effects are those of the
-   task lane (`sdlc/procedure/lifecycle/task/run-task`, step 8).
+   access only a human can grant. The stamps and their effects are the task
+   lane's firing outcome: `success` delivers a one-shot, `error` holds it for a
+   human (`sdlc/procedure/lifecycle/task/run-task`).
 
 9. **Resolve, then rest.** After `success` the spike is delivered and the
    session ends. After `error` stay alive for the human with the context loaded.

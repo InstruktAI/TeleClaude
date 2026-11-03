@@ -820,6 +820,15 @@ stt:
     parakeet:
       model: mlx-community/parakeet-tdt-0.6b-v3
       cli_bin: null
+<!-- planned:spike-todo-kind -->
+workflow:
+  autostart: # per-kind switch for the lifecycle runner's autonomous dispatch; every kind defaults to false, and a manual start ignores it
+    feature: boolean
+    change: boolean
+    bug: boolean
+    task: boolean
+    spike: boolean # autonomous run of a prepared spike (local/projects/teleclaude/spec/feature/workflow/research-spike)
+<!-- /planned:spike-todo-kind -->
 ```
 
 The service-level TTS and STT settings inherit their existing operator-facing

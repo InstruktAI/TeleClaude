@@ -52,8 +52,6 @@ machines. When to file one is `sdlc/policy/research-spikes`.
 
 ## Known caveats
 
-- A spike is never repository work on the GitHub workflow store, as a task is
-  not; a job that waits on a spike shows a dependency the board does not list.
 - A spike that cannot verify a behavior with throwaway resources records what
   remains unverified and still completes; its dependent decides with that gap
   visible.

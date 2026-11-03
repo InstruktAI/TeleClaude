@@ -49,9 +49,9 @@ spike.
   (`local/projects/teleclaude/spec/teleclaude-config`). A manual start runs it
   regardless of autostart, through the same work-operation route a task's manual
   start takes.
-- The run session carries the `spike-runner` role
-  (`local/projects/teleclaude/spec/feature/identity/agent-roles`), whose reach
-  admits committing to the repository, which the task runner's does not.
+- The run session carries the `spike-runner` role, an agent role with full
+  reach like the task runner's
+  (`local/projects/teleclaude/spec/feature/identity/agent-roles`).
 - A spike's firing-start stamp and its outcome stamp are accepted and reconciled
   as a one-shot task's: `success` delivers the spike, `error` holds it with the
   task-error source and its reason.
