@@ -93,8 +93,9 @@ contributors; the index is a map to the work, not a session diary
    - open questions and new decisions for the human stand out;
    - it reads well on a phone.
 
-   The markdown files stay the source; regenerate the pages when they change.
-   The page shows the consolidated current state, like the index it renders.
+   The `index.html` is the consolidated view over the workspace; the files
+   keep what they hold and are not rewritten for it. The markdown files stay
+   the source; regenerate the pages when they change.
 
 4. **Name files for what they hold, never for their version.** Revise in place.
    When a rework must keep its predecessor, give the new file a descriptive name
