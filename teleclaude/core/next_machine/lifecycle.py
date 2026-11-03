@@ -783,6 +783,8 @@ def _feature_phase(
     if not _review_current(
         model.prd_review, _artifact_digest(model, STATE_KEY_PRD), _current_report_digest("prd_review", report_digests)
     ):
+        if model.prd_review.cleared_by_substantive_drift:
+            return LifecyclePhase.PRD_DRAFTING
         return LifecyclePhase.PRD_REVIEW
     if not prd_approval_current(model):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
