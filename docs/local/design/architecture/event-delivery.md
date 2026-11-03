@@ -234,9 +234,10 @@ relayed event is claimed in the same atomic step as its forwarded append, as at
 publication; one whose claim another receipt of the same delivery already took
 leaves the outbox without being appended.
 
-The cluster streams keep entries by age, not by count: every computer trims
-them of entries older than their retention age, and a forwarded append trims
-nothing. A backlog forwarded at once therefore pushes no entry out of a stream,
+The cluster streams keep an entry while it is younger than their retention age
+or among their newest entries up to the count they keep today: a computer of
+this release removes only an entry that is both older and beyond that count,
+and a forwarded append removes nothing. A backlog forwarded at once therefore pushes no entry out of a stream,
 and a retained consumer that reads within the retention age handles every
 entry, forwarded or not, however large the backlog was.
 
