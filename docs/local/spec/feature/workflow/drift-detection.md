@@ -828,6 +828,20 @@ Scenario: origin/main advances past a cosmetic code-drift verdict without touchi
   prepared plan to the analyzer at once — the sweep the opt-in `age` class exists
   to avoid.
 
+<!-- planned-change:substantive-prd-drift-skips-intake -->
+
+- **A substantive-cleared PRD derives PRD review, not PRD drafting.** Feature
+  phase derivation does not consult `prd_review.cleared_by_substantive_drift`:
+  a present PRD whose review a substantive stamp cleared derives `prd_review`
+  on the unchanged PRD, contrary to the re-derivation contract. A prepare call
+  that reaches `prepared` while an artifact's drift is still `substantive`
+  answers with a re-run instruction without re-applying the review
+  invalidation, so such a Todo repeats that answer until the artifact is
+  rewritten.
+
+<!-- change:substantive-prd-drift-skips-intake -->
+<!-- /planned-change:substantive-prd-drift-skips-intake -->
+
 ## See Also
 
 - ~/.teleclaude/docs/sdlc/procedure/lifecycle/prepare/drift-analyze.md
