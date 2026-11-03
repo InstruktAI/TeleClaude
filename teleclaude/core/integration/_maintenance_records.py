@@ -6,11 +6,13 @@ import fcntl
 import json
 import os
 import tempfile
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import IO
 
 from pydantic import BaseModel, ConfigDict
 
@@ -34,6 +36,7 @@ _EVENT_FILENAME = "event.payload"
 _EVENT_KEY_PREFIX = "event-"
 _EVENT_ID_FIELD = "event_id"
 _LOCK_MODE = "a+"
+_LOCK_POLL_SECONDS = 0.05
 _ACTIVATION_REGISTRATION_LOCK_FILENAME = "activation-registration.lock"
 _TEXT_ENCODING = "utf-8"
 _NEWLINE = "\n"
@@ -211,13 +214,35 @@ def maintenance_directory(project_root: str | Path) -> Path:
     return root / _STATE_DIRECTORY / _MAINTENANCE_DIRECTORY
 
 
+def _acquire_exclusive(handle: IO[str], wait_seconds: float | None) -> None:
+    """Take the exclusive lock, waiting without bound or raising ``TimeoutError`` once ``wait_seconds`` have passed."""
+    if wait_seconds is None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("the registration lock stayed held past the bounded wait") from None
+            time.sleep(_LOCK_POLL_SECONDS)
+
+
 @contextmanager
-def maintenance_activation_registration_lock(project_root: str | Path) -> Iterator[None]:
-    """Serialize activation record registration with the drain's final empty-record boundary."""
+def maintenance_activation_registration_lock(
+    project_root: str | Path, *, wait_seconds: float | None = None
+) -> Iterator[None]:
+    """Serialize activation record registration with the drain's final empty-record boundary.
+
+    A caller that cannot wait without bound passes ``wait_seconds`` and gets ``TimeoutError`` when the lock
+    stays held that long.
+    """
     lock_path = maintenance_directory(project_root) / _ACTIVATION_REGISTRATION_LOCK_FILENAME
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open(_LOCK_MODE, encoding=_TEXT_ENCODING) as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        _acquire_exclusive(handle, wait_seconds)
         try:
             yield
         finally:

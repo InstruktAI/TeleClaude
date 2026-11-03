@@ -1,4 +1,4 @@
-"""Standalone git ``reference-transaction`` filter: report an ``origin/main`` advance, ignore everything else.
+"""Standalone git ``reference-transaction`` filter: report a remote-main advance, ignore everything else.
 
 Git runs this hook about three times per ref transaction, so the no-match path imports nothing from
 TeleClaude and starts no ``telec``. It runs under whatever ``python3`` the hook finds, which may be an
@@ -21,7 +21,7 @@ UPDATE_FIELD_COUNT = 3
 
 
 def advanced_origin_main(line: str) -> tuple[str, str] | None:
-    """The previous and new object ids of an ``origin/main`` update line, or ``None`` when the line is another ref, a deletion, or malformed."""
+    """The previous and new object ids of a remote-main update line, or ``None`` when the line is another ref, a deletion, or malformed."""
     fields = line.split()
     if len(fields) != UPDATE_FIELD_COUNT or fields[2] != ORIGIN_MAIN_REFERENCE:
         return None
@@ -34,7 +34,7 @@ def advanced_origin_main(line: str) -> tuple[str, str] | None:
 
 
 def main(argv: list[str]) -> int:
-    """Read the transaction on stdin once it is committed and hand an ``origin/main`` advance to the platform."""
+    """Read the transaction on stdin once it is committed and hand a remote-main advance to the platform."""
     if len(argv) < 2 or argv[1] != COMMITTED_STATE:
         return 0
     for line in sys.stdin:

@@ -93,10 +93,6 @@ _EARLIER_EVENT_FAILURE = (
     "{action_id} failed in an earlier run for the {event_type} event {event_id}. Replay it for that event with: "
     "{command}. The standing integrator owns that replay."
 )
-_EARLIER_REMOTE_MAIN_FAILURE = (
-    "{action_id} failed in an earlier run for the remote-main advancement to {after_sha}. Replay it for that "
-    "advancement with: {command}. The standing integrator owns that replay."
-)
 _OWED = "{action_id} is owed: {reason}"
 _OWED_RUN = "  Run: {command}"
 _UNDETERMINED = "Cannot tell whether {action_id} is owed: {detail}"
@@ -390,11 +386,9 @@ def _report_earlier_failures(root: Path, emit: Callable[[str], None]) -> None:
             )
         elif isinstance(activation, RemoteMainActivation):
             emit(
-                _EARLIER_REMOTE_MAIN_FAILURE.format(
-                    action_id=record.action_id,
-                    after_sha=activation.after_sha[:_SHORT_COMMIT_LENGTH],
-                    command=command,
-                )
+                f"{record.action_id} failed in an earlier run for the remote-main advancement to "
+                f"{activation.after_sha[:_SHORT_COMMIT_LENGTH]}. Recovery reference: {command}. "
+                "The standing integrator owns that replay."
             )
         else:
             emit(

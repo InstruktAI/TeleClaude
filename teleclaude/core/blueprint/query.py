@@ -33,14 +33,11 @@ from teleclaude.git import BadName, GitCommandError, InvalidGitRepositoryError, 
 _OBSERVATION_BUDGET_SECONDS = 30.0
 _OBSERVATION_POLL_INTERVAL_SECONDS = 0.1
 _MAINTENANCE_OBSERVATION_FAILED_EVENT = "blueprint_maintenance_observation_failed"
-_BASELINE_UNRESOLVED_EVENT = "blueprint_baseline_unresolved"
-_DIFFERENCE_UNCOMPUTED_EVENT = "blueprint_difference_uncomputed"
 _MAINTENANCE_OBSERVATION_UNAVAILABLE_REASON = "Blueprint maintenance state could not be observed"
 _MAINTENANCE_FAILED_REASON = "Blueprint maintenance failed before publishing a complete generation"
 _MAINTENANCE_NOT_RECORDED_REASON = "Blueprint maintenance was not recorded and no complete generation is published"
 _MAINTENANCE_OBSERVATION_EXPIRED_REASON = "Blueprint maintenance did not converge within the observation bound"
 _GENERATION_MALFORMED_REASON = "The current Blueprint generation is malformed or incomplete"
-_REVISION_MISSING_REASON = "The published Blueprint describes revision {revision}, which this repository does not hold"
 _GIT_DIFF_NAME_ONLY = "--name-only"
 _GIT_NO_RENAMES = "--no-renames"
 _GIT_NUL_SEPARATED = "-z"
@@ -104,7 +101,6 @@ def query_current_blueprint(
         if published is not None:
             return _answer(root, asking, *published)
 
-        pointer_is_malformed = current_generation_pointer(root).is_symlink()
         try:
             observation = observe_maintenance_action(root, BLUEPRINT_MAINTENANCE_ACTION_ID)
         except (OSError, ValueError, GitCommandError, InvalidGitRepositoryError, NoSuchPathError):
@@ -114,6 +110,12 @@ def query_current_blueprint(
                 reason=_MAINTENANCE_OBSERVATION_UNAVAILABLE_REASON,
                 recovery_reference=ON_DEMAND_MAINTENANCE_COMMAND,
             )
+        # Maintenance can publish its generation and settle its record between the read above and this
+        # observation, so a terminal observation never stands without pinning the pointer once more.
+        published = read_published_generation(root)
+        if published is not None:
+            return _answer(root, asking, *published)
+        pointer_is_malformed = current_generation_pointer(root).is_symlink()
         last_maintenance_state = observation.state
         if observation.state is MaintenanceObservationState.FAILED:
             return BlueprintQueryResult(
@@ -154,7 +156,7 @@ def _answer(
             state=BlueprintQueryState.REVISION_MISSING,
             generation=generation,
             manifest=manifest,
-            reason=_REVISION_MISSING_REASON.format(revision=manifest.baseline_sha),
+            reason=f"The published Blueprint describes revision {manifest.baseline_sha}, which this repository does not hold",
             recovery_reference=ON_DEMAND_MAINTENANCE_COMMAND,
         )
 
@@ -163,7 +165,7 @@ def _answer(
     try:
         baseline = selected_maintenance_baseline(root)
     except _GIT_FAILURES as exc:
-        logger.warning(_BASELINE_UNRESOLVED_EVENT, exc_info=True)
+        logger.warning("blueprint_baseline_unresolved", exc_info=True)
         baseline_error = str(exc)
 
     maintenance_state: MaintenanceObservationState | None = None
@@ -183,7 +185,7 @@ def _answer(
         asking_head = asking_repository.commit(_GIT_HEAD_REFERENCE).hexsha
         differing_files = _differing_files(asking_repository, manifest.baseline_sha)
     except _GIT_FAILURES as exc:
-        logger.warning(_DIFFERENCE_UNCOMPUTED_EVENT, asking_checkout=str(asking), exc_info=True)
+        logger.warning("blueprint_difference_uncomputed", asking_checkout=str(asking), exc_info=True)
         difference_error = str(exc)
 
     return BlueprintQueryResult(

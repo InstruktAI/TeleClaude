@@ -99,10 +99,10 @@ _INELIGIBLE_LOCATION_DETAIL = "{root} is not the canonical checkout on main"
 _INVALID_RANGE_DETAIL = "the activation range is not a literal range of the checked-out source"
 _REFUSAL_NOTICE = "Maintenance for this activation was not recorded ({reason}): {detail}. Run {command} to perform it."
 _UNKNOWN_ACTION_EXIT_CODE = 127
+_REMOTE_MAIN_REGISTRATION_WAIT_SECONDS = 10.0
 _SUCCESS_OUTCOME = "success"
 _REPLAY_COMMIT_COMMAND = "telec repo maintenance retry --after-sha {after_sha} --action {action_id}"
 _REPLAY_EVENT_COMMAND = "telec repo maintenance retry --event-id {event_id} --action {action_id}"
-_REPLAY_REMOTE_MAIN_COMMAND = "telec repo maintenance retry --remote-main-sha {after_sha} --action {action_id}"
 ON_DEMAND_MAINTENANCE_COMMAND = "telec sync"
 _GIT_FAILURES = (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, TypeError, ValueError)
 
@@ -187,7 +187,7 @@ def selected_maintenance_baseline(project_root: Path) -> SelectedBaseline:
     """Resolve the committed source Blueprint maintenance answers to, from the owning checkout including worktree callers.
 
     The project's effective declaration decides: a Blueprint bound to remote-main activation follows
-    the ``origin/main`` revision this checkout observed, every other project follows its local main.
+    the remote-main revision this checkout observed, every other project follows its local main.
     Extraction, the query and replay all read this one selection.
     """
     root = resolve_project_state_root(project_root)
@@ -344,39 +344,47 @@ def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids
     return True
 
 
-def record_remote_main_activation(project_root: Path, before_sha: str | None, after_sha: str) -> bool:
+def record_remote_main_activation(project_root: Path, before_sha: str | None, after_sha: str) -> ActivationRecording:
     """Persist the actions one remote-main advancement owes this project, before returning.
 
     The advancement is observed from any checkout of the project, so the records go to the canonical
-    checkout, which owns the shared maintenance state. Returns whether the activation is recorded
-    there, now or by an earlier call; an advancement that owes nothing, a canonical checkout that is not
-    on main, and a declaration that cannot be resolved record nothing and return ``False``.
+    checkout, which owns the shared maintenance state. The caller is a synchronous Git hook, so the shared
+    registration lock is awaited only for a bounded time. The outcome is a recorded owed set (including one an
+    earlier call recorded), an explicitly empty owed set, or a refusal with its reason.
     """
+    activation_range = ActivationRange(before_sha=before_sha, after_sha=after_sha)
     root = eligible_maintenance_root(resolve_project_state_root(project_root))
     if root is None:
-        return False
+        return _refuse(
+            activation_range,
+            project_root,
+            ActivationRefusal.INELIGIBLE_LOCATION,
+            _INELIGIBLE_LOCATION_DETAIL.format(root=project_root),
+        )
     try:
         action_ids = tuple(
             main_only_maintenance_action_ids_for_model([], CheckpointActivation.REMOTE_MAIN, maintenance_model(root))
         )
     except ConfigLoadError as exc:
-        logger.warning(_MAINTENANCE_SKIPPED_EVENT, reason=ActivationRefusal.CONFIGURATION_UNRESOLVED, error=str(exc))
-        return False
+        return _refuse(activation_range, root, ActivationRefusal.CONFIGURATION_UNRESOLVED, describe_load_error(exc))
     if not action_ids:
-        return False
+        return OwedSetEmpty()
     activation = RemoteMainActivation(before_sha=before_sha, after_sha=after_sha)
     key = remote_main_activation_key(after_sha)
-    with maintenance_activation_registration_lock(root):
-        owed = tuple(action_id for action_id in action_ids if not record_path(root, key, action_id).exists())
-        queued_at = datetime.now(UTC).isoformat()
-        for action_id in owed:
-            record = MaintenanceActionRecord(
-                activation=activation,
-                action_id=action_id,
-                queued_at=queued_at,
-                state=MaintenanceRecordState.PENDING,
-            )
-            write_record(record_path(root, key, action_id), record)
+    try:
+        with maintenance_activation_registration_lock(root, wait_seconds=_REMOTE_MAIN_REGISTRATION_WAIT_SECONDS):
+            owed = tuple(action_id for action_id in action_ids if not record_path(root, key, action_id).exists())
+            queued_at = datetime.now(UTC).isoformat()
+            for action_id in owed:
+                record = MaintenanceActionRecord(
+                    activation=activation,
+                    action_id=action_id,
+                    queued_at=queued_at,
+                    state=MaintenanceRecordState.PENDING,
+                )
+                write_record(record_path(root, key, action_id), record)
+    except (OSError, ValueError) as exc:
+        return _refuse(activation_range, root, ActivationRefusal.RECORD_FAILED, str(exc))
     if owed:
         logger.info(
             _MAINTENANCE_RECORDED_EVENT,
@@ -385,7 +393,7 @@ def record_remote_main_activation(project_root: Path, before_sha: str | None, af
             after_sha=after_sha,
             action_ids=owed,
         )
-    return True
+    return OwedSetRecorded(action_ids)
 
 
 def start_drain_contender(project_root: Path) -> bool:
@@ -461,7 +469,7 @@ def replay_command(activation: MaintenanceActivation, action_id: str) -> str:
     if isinstance(activation, EventActivation):
         return _REPLAY_EVENT_COMMAND.format(event_id=activation.event_id, action_id=action_id)
     if isinstance(activation, RemoteMainActivation):
-        return _REPLAY_REMOTE_MAIN_COMMAND.format(after_sha=activation.after_sha, action_id=action_id)
+        return f"telec repo maintenance retry --remote-main-sha {activation.after_sha} --action {action_id}"
     return _REPLAY_COMMIT_COMMAND.format(after_sha=activation.after_sha, action_id=action_id)
 
 

@@ -46,7 +46,6 @@ _RETRY_FAILED = "Maintenance action remains failed after retry; inspect telec re
 _RETRY_SUCCEEDED = "Maintenance action retry completed."
 _ACTIVATION_LINE = "Activation {after_sha} (queued {queued_at})"
 _EVENT_ACTIVATION_LINE = "Event activation {event_type} {event_id} (queued {queued_at})"
-_REMOTE_MAIN_ACTIVATION_LINE = "Remote-main activation {after_sha} (queued {queued_at})"
 _RECORD_LINE = "  {action_id}: {state}; exit_code={exit_code}; finished_at={finished_at}"
 _RECORD_RECOVERY_LINE = "  Recover with: {command}"
 _MARKER_ACTIVATION_LINE = "  {after_sha} activated_at={activated_at}"
@@ -170,7 +169,7 @@ def _activation_line(record: MaintenanceActionRecord) -> str:
             event_type=activation.event_type, event_id=activation.event_id, queued_at=record.queued_at
         )
     if isinstance(activation, RemoteMainActivation):
-        return _REMOTE_MAIN_ACTIVATION_LINE.format(after_sha=activation.after_sha, queued_at=record.queued_at)
+        return f"Remote-main activation {activation.after_sha} (queued {record.queued_at})"
     return _ACTIVATION_LINE.format(after_sha=activation.after_sha, queued_at=record.queued_at)
 
 

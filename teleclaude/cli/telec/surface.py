@@ -116,7 +116,7 @@ _HOOK_ENTRY_DESCRIPTIONS: dict[HookEntryVerb, str] = {
     HookEntryVerb.PRE_COMMIT: "Run the thin pre-commit backstop",
     HookEntryVerb.POST_COMMIT: "Run deterministic post-commit maintenance",
     HookEntryVerb.POST_MERGE: "Run deterministic post-merge automation",
-    HookEntryVerb.REMOTE_MAIN: "Record maintenance owed by an origin/main advance",
+    HookEntryVerb.REMOTE_MAIN: "Record maintenance owed by a remote-main advance",
 }
 
 
@@ -1919,10 +1919,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "Maps each changed file to its symbols, runs a transitive reverse "
                             "dependency traversal over the Blueprint, and prints the union of "
                             "dependents with file:line.",
-                            "Waits briefly for recorded Blueprint maintenance when committed main "
-                            "has advanced. If no complete generation matching committed main can "
-                            "be established, prints unavailability and its recovery command; it "
-                            "never returns stale dependents as a current answer.",
+                            "Answers from the published Blueprint generation and names the revision "
+                            "it reflects, the baseline maintenance converges to, the maintenance "
+                            "state, and the files in which the invoking checkout differs from that "
+                            "revision, with the files asked about marked. A generation behind the "
+                            "checkout still answers; judging the difference is the caller's.",
+                            "Waits briefly for recorded Blueprint maintenance only when no complete "
+                            "generation is published yet. If none can be established, prints "
+                            "unavailability and its recovery command.",
                         ],
                         examples=[
                             "telec repo blueprint affected teleclaude/core/foo.py teleclaude/api/bar.py",

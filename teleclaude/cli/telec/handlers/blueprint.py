@@ -19,20 +19,7 @@ _FALLBACK_PREFIX = "blueprint unavailable — fall back to manual exploration"
 _RECOVERY_LINE = "Recover with: {reference}"
 _UNAVAILABLE_RESULT_TEMPLATE = "{prefix}: {reason}"
 _SHORT_REVISION_LENGTH = 12
-_GENERATION_LINE = "Blueprint generation: revision {revision}, generated {generated_at}"
-_BASELINE_LINE = "Maintenance baseline: {reference} at {revision}"
-_BASELINE_UNRESOLVED_LINE = "Maintenance baseline: could not be resolved ({error})"
-_MAINTENANCE_LINE = "Blueprint maintenance: {state}"
 _MAINTENANCE_UNOBSERVED = "not observed"
-_ASKING_LINE = "Asking checkout: {checkout} at HEAD {head}"
-_NO_DIFFERENCE_LINE = "The asking checkout matches the generation revision in every file."
-_DIFFERENCE_LINE = "The asking checkout differs from the generation revision in {count} file(s) (* = asked about):"
-_DIFFERENCE_UNCOMPUTED_LINE = (
-    "The difference between the asking checkout and the generation could not be computed: {error}"
-)
-_DIFFERENCE_COMMAND_LINE = "Inspect it with: git -C {checkout} diff {revision}  (untracked files are listed above only)"
-_ASKED_MARK = "*"
-_UNASKED_MARK = " "
 
 
 def handle_code_blueprint(args: list[str]) -> None:
@@ -70,29 +57,32 @@ def _format_header(query: BlueprintQueryResult, *, asking: Path, asked: set[str]
     if manifest is None:
         return ""
     revision = manifest.baseline_sha
-    lines = [_GENERATION_LINE.format(revision=revision[:_SHORT_REVISION_LENGTH], generated_at=manifest.generated_at)]
+    lines = [f"Blueprint generation: revision {revision[:_SHORT_REVISION_LENGTH]}, generated {manifest.generated_at}"]
     if query.baseline is not None:
         lines.append(
-            _BASELINE_LINE.format(
-                reference=query.baseline.reference, revision=query.baseline.revision[:_SHORT_REVISION_LENGTH]
-            )
+            f"Maintenance baseline: {query.baseline.reference} at {query.baseline.revision[:_SHORT_REVISION_LENGTH]}"
         )
     else:
-        lines.append(_BASELINE_UNRESOLVED_LINE.format(error=query.baseline_error))
+        lines.append(f"Maintenance baseline: could not be resolved ({query.baseline_error})")
     state = query.maintenance_state.value if query.maintenance_state is not None else _MAINTENANCE_UNOBSERVED
-    lines.append(_MAINTENANCE_LINE.format(state=state))
+    lines.append(f"Blueprint maintenance: {state}")
     if query.recovery_reference and query.maintenance_state is not None:
         lines.append(_RECOVERY_LINE.format(reference=query.recovery_reference))
     head = query.asking_head[:_SHORT_REVISION_LENGTH] if query.asking_head else _MAINTENANCE_UNOBSERVED
-    lines.append(_ASKING_LINE.format(checkout=asking, head=head))
+    lines.append(f"Asking checkout: {asking} at HEAD {head}")
     if query.difference_error is not None:
-        lines.append(_DIFFERENCE_UNCOMPUTED_LINE.format(error=query.difference_error))
+        lines.append(
+            f"The difference between the asking checkout and the generation could not be computed: {query.difference_error}"
+        )
     elif not query.differing_files:
-        lines.append(_NO_DIFFERENCE_LINE)
+        lines.append("The asking checkout matches the generation revision in every file.")
     else:
-        lines.append(_DIFFERENCE_LINE.format(count=len(query.differing_files)))
-        lines.extend(f"  {_ASKED_MARK if path in asked else _UNASKED_MARK} {path}" for path in query.differing_files)
-        lines.append(_DIFFERENCE_COMMAND_LINE.format(checkout=asking, revision=revision))
+        lines.append(
+            f"The asking checkout differs from the generation revision in {len(query.differing_files)} file(s) "
+            "(* = asked about):"
+        )
+        lines.extend(f"  {'*' if path in asked else ' '} {path}" for path in query.differing_files)
+        lines.append(f"Inspect it with: git -C {asking} diff {revision}  (untracked files are listed above only)")
     return "\n".join(lines)
 
 
