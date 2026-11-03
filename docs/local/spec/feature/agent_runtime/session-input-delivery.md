@@ -198,6 +198,8 @@ transcript. If a session-originated send exhausts its delivery window, its calle
 receives the target and failure outcome while the target remains available for
 inspection or recovery.
 
+<!-- planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
 Once queue-backed platform-authored text has begun to be placed into a running
 agent's composer, a failure of that delivery attempt is final: the occurrence ends
 as a failed delivery, and the platform neither places it again nor submits anything
@@ -205,6 +207,29 @@ on its behalf. What the begun placement left in the composer is uncertain and st
 as it is, so the platform never adds a second copy of the occurrence. A terminal
 delivery notice sent for this failure never says the input did not reach the agent.
 Conversation text keeps its own path, waiting on an occupied composer.
+<!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
+Once queue-backed platform-authored text has begun to be placed into a running
+agent's composer, the platform never places that occurrence again, so it never
+adds a second copy of it.
+
+When the paste of that text into an empty composer completed and only its submit
+failed, the occurrence owes a submit. Each later attempt on the delivery-retry
+schedule observes the composer and places nothing: an occupied composer receives
+one discrete submit, an empty composer means the text has already left it and
+the occurrence is delivered with no host action, and a screen with no composer
+holds the attempt. When the attempts run out with the submit still owed, the
+occurrence ends as a failed delivery and its text stays in the composer.
+
+Any other failure after placement began is final: the occurrence ends as a failed
+delivery, the platform submits nothing on its behalf, and what the begun placement
+left in the composer is uncertain and stays as it is. A terminal delivery notice
+sent for a failure after placement began never says the input did not reach the
+agent. Conversation text keeps its own path, waiting on an occupied composer.
+
+A delivery result reports each host effect it performed: a paste that completed
+is reported as performed even when the submit after it failed.
+<!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 ### Raw-key commands
 
@@ -328,6 +353,21 @@ Graceful settlement is owned by
 recovery continues to use this surface's durable accepted-input evidence.
 
 #### UC-SID22: A session-originated start message identifies its sender
+
+<!-- planned:fix-a-platform-wake-whose-tmux-submit-timed -->
+
+#### UC-SID23: Platform text whose submit failed after its paste is submitted, not left behind
+
+```gherkin
+Given queue-backed platform-authored text was pasted into a running agent's empty composer
+And the submit that followed the paste failed
+When the occurrence's next delivery attempt finds that text still in the composer
+Then the platform sends one discrete submit and pastes nothing
+And the agent receives the occurrence as one turn
+And conversation text held behind that composer is delivered once the composer is empty
+```
+
+<!-- /planned:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 ### Cross-context references
 

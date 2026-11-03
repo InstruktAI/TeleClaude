@@ -72,11 +72,24 @@ file input are the queue's active message types.
 
 ### Status Lifecycle
 
+<!-- planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
 ```
 pending → processing → delivered
                     ↘ failed → pending (retry) → ...
 pending/failed/processing → expired (session closed or unavailable, retries exhausted, placement uncertain)
 ```
+
+<!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
+```
+pending → processing → delivered
+                    ↘ failed → pending (retry) → ...
+                    ↘ failed, submit owed → pending (submit-only retry) → ...
+pending/failed/processing → expired (session closed or unavailable, retries exhausted, placement uncertain)
+```
+
+<!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 ### Worker Design
 
@@ -87,7 +100,17 @@ Each session has at most one worker task (`asyncio.create_task`). Workers are pe
 3. `deliver_fn(row)` — call the delivery function (raises on failure)
 4. `mark_inbound_delivered(row_id, now)` — set `status='delivered'`
 5. On an exception other than a session rejection or a step 6 failure: `mark_inbound_failed(row_id, error, now, backoff)` — schedule retry, until the row's attempts run out (Retry Policy); a rejection ends the row `expired`
+
+<!-- planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
 6. On a placement-uncertain failure — the delivery function reports that placement of platform-authored text into an active agent's pane had begun when the attempt failed — the row ends `expired` with that error, its placement-uncertain terminal cause goes to the terminal-delivery notice, whose producer notices never say the input did not reach the agent, and it is never retried, because a repeated placement can leave the same occurrence in the composer twice (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`, Target validation and delivery outcomes). Conversation text is never reported placement-uncertain; its failures follow step 5
+
+<!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
+6. On a placement-uncertain failure — the delivery function reports that placement of platform-authored text into an active agent's pane had begun when the attempt failed, and step 7 does not apply — the row ends `expired` with that error, its placement-uncertain terminal cause goes to the terminal-delivery notice, whose producer notices never say the input did not reach the agent, and it is never retried, because a repeated placement can leave the same occurrence in the composer twice (`local/projects/teleclaude/spec/feature/agent_runtime/session-input-delivery`, Target validation and delivery outcomes). Conversation text is never reported placement-uncertain; its failures follow step 5
+7. On a submit-owed failure — the paste of platform-authored text into an empty composer completed and only its submit failed — the row is marked submit-owed and scheduled for retry like step 5. Every later attempt on a submit-owed row places nothing: it submits whatever the composer holds, or finds the composer empty and delivers the row with no host action. When its attempts run out, the row ends `expired` with the placement-uncertain terminal cause of step 6
+
+<!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 Workers self-terminate when no eligible rows remain. `_ensure_worker` spawns a new worker if one is not already running.
 
@@ -103,7 +126,13 @@ Access pattern:
 
 ### Retry Policy
 
+<!-- planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
 Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule. Retrying stops and the row ends `expired` when its session is rejected as not found, closed or unavailable, when its attempts run out one attempt after the schedule's last entry, or when an attempt to deliver platform-authored text to an active agent fails after its placement into the pane began (Worker Design step 6).
+<!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
+Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(attempt_count, len-1)`. A row whose delivery fails is retried on that schedule. Retrying stops and the row ends `expired` when its session is rejected as not found, closed or unavailable, when its attempts run out one attempt after the schedule's last entry, or when an attempt to deliver platform-authored text to an active agent fails after its placement into the pane began and no submit is owed (Worker Design step 6). A submit-owed row keeps the schedule, and every retry of it submits without placing (Worker Design step 7).
+<!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles worker crash/restart).
 
@@ -131,10 +160,20 @@ If `enqueue_inbound` returns `None` because `(origin, source_message_id)` dedup 
 7. On `process_text` returning False: raise `RuntimeError` (triggers retry)
 8. On success: update `last_activity`, start polling
 
+<!-- planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
 A failed attempt to deliver platform-authored text to an active agent whose
 placement into the pane had begun raises the placement-uncertain error instead of
 a retrying error (Worker Design step 6). A failure before placement began keeps the
 retrying path.
+<!-- change:fix-a-platform-wake-whose-tmux-submit-timed -->
+
+A failed attempt to deliver platform-authored text to an active agent whose
+placement into the pane had begun raises the submit-owed error when the paste into
+an empty composer completed and only the submit failed (Worker Design step 7), and
+the placement-uncertain error otherwise (Worker Design step 6). A failure before
+placement began keeps the retrying path.
+<!-- /planned-change:fix-a-platform-wake-whose-tmux-submit-timed -->
 
 Delivery is not the primary UI-origin acceptance boundary. Delivery may preserve compatibility for old queued rows, but it must not be the first writer for newly accepted UI input and must never advance `last_projected_at`. Terminal input does not enter through this queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `local/projects/teleclaude/spec/session-projection`.
 
