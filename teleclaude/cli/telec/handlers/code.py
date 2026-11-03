@@ -38,6 +38,7 @@ from teleclaude.cli.telec.handlers._code_maintenance import handle_code_maintena
 from teleclaude.cli.telec.handlers._code_post_commit import handle_code_post_commit
 from teleclaude.cli.telec.handlers._code_post_merge import handle_code_post_merge
 from teleclaude.cli.telec.handlers._code_pre_commit import handle_code_pre_commit
+from teleclaude.cli.telec.handlers._code_remote_main import handle_code_remote_main
 from teleclaude.cli.telec.handlers._code_stamp import handle_code_stamp
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.telec.surface import REPO_COMMIT, REPO_OWNERS
@@ -188,6 +189,7 @@ _HOOK_ENTRY_HANDLERS: dict[HookEntryVerb, Callable[[list[str]], None]] = {
     HookEntryVerb.PRE_COMMIT: handle_code_pre_commit,
     HookEntryVerb.POST_COMMIT: handle_code_post_commit,
     HookEntryVerb.POST_MERGE: handle_code_post_merge,
+    HookEntryVerb.REMOTE_MAIN: handle_code_remote_main,
 }
 
 

@@ -46,6 +46,7 @@ class HookEntryVerb(StrEnum):
     PRE_COMMIT = "pre-commit"
     POST_COMMIT = "post-commit"
     POST_MERGE = "post-merge"
+    REMOTE_MAIN = "remote-main"
 
 
 class JobsSubcommand(StrEnum):

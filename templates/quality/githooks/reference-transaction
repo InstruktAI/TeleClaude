@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# teleclaude: observe an origin/main advance for remote-main maintenance.
+
+python3 -I "{{reference_transaction_filter}}" "$@" || exit 0

@@ -116,6 +116,7 @@ _HOOK_ENTRY_DESCRIPTIONS: dict[HookEntryVerb, str] = {
     HookEntryVerb.PRE_COMMIT: "Run the thin pre-commit backstop",
     HookEntryVerb.POST_COMMIT: "Run deterministic post-commit maintenance",
     HookEntryVerb.POST_MERGE: "Run deterministic post-merge automation",
+    HookEntryVerb.REMOTE_MAIN: "Record maintenance owed by an origin/main advance",
 }
 
 
