@@ -221,13 +221,15 @@ attached terminal sent input to or attached to the session; the platform's own
 placement does not change that time. Each later attempt places nothing:
 
 - When no attached terminal has sent input or attached since the second in which
-  the platform began placing the text, the composer holds only what the
-  platform put there. An occupied composer receives one discrete submit.
+  the platform began placing the text, and no input has been placed into that
+  composer outside the queue since, the composer holds only what the platform
+  put there. An occupied composer receives one discrete submit.
 - An empty composer means the text has already left it, so the attempt performs
   no host action and the occurrence continues exactly as one whose submit
   succeeded.
-- When an attached terminal has sent input or attached since that second, a
-  person has been at the composer. An occupied composer is then left as it is:
+- When an attached terminal has sent input or attached since that second, or
+  input has been placed into the composer outside the queue since, the composer
+  may hold someone else's input. An occupied composer is then left as it is:
   the occurrence ends as text appended unsubmitted, exactly as platform text
   appended to an occupied composer does, and the person decides its submission.
 - A screen with no composer, or a host that cannot report that time, leaves the
@@ -235,9 +237,12 @@ placement does not change that time. Each later attempt places nothing:
 
 An owed submit is retried on the delivery-retry schedule, repeating its last
 interval, until one of those outcomes is reached or its session ends; it does
-not expire while it is owed. New input accepted for the session, and conversation
-text held on its occupied composer, make the owed submit's next attempt happen
-at once.
+not expire while it is owed. While a submit is owed, queue-backed input for the
+session that finds the composer occupied waits instead of being appended, whatever
+its authority, so it never joins the owed text; input placed outside the queue is
+appended as usual and marks the composer as no longer holding only the platform's
+text. New input accepted for the session, and input waiting on its occupied
+composer, make the owed submit's next attempt happen at once.
 
 Any other failure after placement began is final: the occurrence ends as a failed
 delivery, the platform submits nothing on its behalf, and what the begun placement
