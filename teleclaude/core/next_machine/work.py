@@ -55,6 +55,7 @@ from teleclaude.core.next_machine.output_formatting import (
     MISSING_ACTIVE_TODO_MESSAGE_TEMPLATE,
     TERMINAL_DEPARTURE_DIRECTIVE,
     format_error,
+    format_merge_not_performed,
     format_orchestration_watch_instruction,
     format_pending_classes_for_dispatch,
     format_send_command,
@@ -312,27 +313,55 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     head_after_merge = merge_result.head_after
     _log_next_work_phase(phase_slug, "merge_main", merge_started, "run", merge_result.outcome.value)
 
+    instruction = await _dispatch_after_merge(
+        db=db,
+        todos_db=todos_db,
+        slug=resolved_slug,
+        phase_slug=phase_slug,
+        cwd=cwd,
+        worktree_cwd=worktree_cwd,
+        head_after_merge=head_after_merge,
+    )
+    if merge_result.outcome in (WorktreeMergeOutcome.DEFERRED_UNCOMMITTED, WorktreeMergeOutcome.FETCH_UNAVAILABLE):
+        notice = format_merge_not_performed(
+            resolved_slug, merge_result.outcome, merge_result.message, merge_result.head_after
+        )
+        return f"{notice}\n\n{instruction}"
+    return instruction
+
+
+async def _dispatch_after_merge(
+    *,
+    db: Db,
+    todos_db: WorkflowStore,
+    slug: str,
+    phase_slug: str,
+    cwd: str,
+    worktree_cwd: str,
+    head_after_merge: str,
+) -> str:
+    """Claim the item phase and run the dispatch loop once work entry has decided the origin/main merge."""
     # Ensure item phase is IN_PROGRESS on first work entry.
-    current_phase = await _get_item_phase_db(todos_db, resolved_slug)
+    current_phase = await _get_item_phase_db(todos_db, slug)
     if current_phase == ItemPhase.PENDING.value:
-        await set_item_phase_db(todos_db, resolved_slug, ItemPhase.IN_PROGRESS.value)
+        await set_item_phase_db(todos_db, slug, ItemPhase.IN_PROGRESS.value)
 
     # Dispatch loop — each iteration reads the authoritative lifecycle pointer and dispatches.
     for _iter in range(_WORK_LOOP_LIMIT):
-        state = await todos_db.read_state(resolved_slug)
+        state = await todos_db.read_state(slug)
         if state is None:
             return format_error(
                 "NO_STATE",
-                f"No state record for {resolved_slug}. Run telec todo prepare {resolved_slug} first.",
-                next_call=f"telec todo prepare {resolved_slug}",
+                f"No state record for {slug}. Run telec todo prepare {slug} first.",
+                next_call=f"telec todo prepare {slug}",
             )
 
         writer = StateWriter(state)
-        current_phase = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_work({resolved_slug})")
+        current_phase = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_work({slug})")
         if current_phase == LifecyclePhase.PREPARED:
             phase_started = perf_counter()
             await asyncio.to_thread(publish_todo_branch, Path(worktree_cwd))
-            await _advance_prepared_to_build_started(todos_db, resolved_slug, state, worktree_cwd)
+            await _advance_prepared_to_build_started(todos_db, slug, state, worktree_cwd)
             _log_next_work_phase(
                 phase_slug,
                 "prepared_handoff",
@@ -347,12 +376,12 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             except ValueError:
                 return format_error(
                     "NOT_PREPARED",
-                    f"{resolved_slug} is still in prepare phase '{current_phase.value}'. Run telec todo prepare first.",
-                    next_call=f"telec todo prepare {resolved_slug}",
+                    f"{slug} is still in prepare phase '{current_phase.value}'. Run telec todo prepare first.",
+                    next_call=f"telec todo prepare {slug}",
                 )
         logger.info(
             "NEXT_WORK_PHASE slug=%s phase=%s iter=%d",
-            resolved_slug,
+            slug,
             phase.value,
             _iter,
         )
@@ -361,7 +390,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         keep_going, instruction = await _work_dispatch(
             db=db,
             todos_db=todos_db,
-            slug=resolved_slug,
+            slug=slug,
             cwd=cwd,
             worktree_cwd=worktree_cwd,
             phase=WorkPhase(phase.value),
@@ -379,9 +408,9 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             return instruction
 
     return (
-        f"LOOP_LIMIT: work state machine for {resolved_slug} exceeded "
+        f"LOOP_LIMIT: work state machine for {slug} exceeded "
         f"{_WORK_LOOP_LIMIT} internal transitions. "
-        f"Inspect state for {resolved_slug} for stuck state."
+        f"Inspect state for {slug} for stuck state."
     )
 
 
