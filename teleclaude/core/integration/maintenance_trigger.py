@@ -18,8 +18,9 @@ DRAIN_HELD_VALUE = "1"
 
 
 class MaintenanceTrigger(StrEnum):
-    """What started a maintenance run: a commit-boundary drain, a platform event, or a manual on-demand run."""
+    """What started a maintenance run: a commit-boundary drain, a platform event, a remote-main advancement, or a manual on-demand run."""
 
     COMMIT_BOUNDARY = "commit_boundary"
     EVENT = "event"
+    REMOTE_MAIN = "remote_main"
     ON_DEMAND = "on_demand"

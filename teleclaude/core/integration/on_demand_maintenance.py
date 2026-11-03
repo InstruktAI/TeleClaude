@@ -30,6 +30,7 @@ from teleclaude.core.integration._maintenance_records import (
     EventActivation,
     MaintenanceActionRecord,
     MaintenanceRecordState,
+    RemoteMainActivation,
     maintenance_drain_lock,
     read_records,
 )
@@ -91,6 +92,10 @@ _EARLIER_FAILURE = (
 _EARLIER_EVENT_FAILURE = (
     "{action_id} failed in an earlier run for the {event_type} event {event_id}. Replay it for that event with: "
     "{command}. The standing integrator owns that replay."
+)
+_EARLIER_REMOTE_MAIN_FAILURE = (
+    "{action_id} failed in an earlier run for the remote-main advancement to {after_sha}. Replay it for that "
+    "advancement with: {command}. The standing integrator owns that replay."
 )
 _OWED = "{action_id} is owed: {reason}"
 _OWED_RUN = "  Run: {command}"
@@ -380,6 +385,14 @@ def _report_earlier_failures(root: Path, emit: Callable[[str], None]) -> None:
                     action_id=record.action_id,
                     event_type=activation.event_type,
                     event_id=activation.event_id,
+                    command=command,
+                )
+            )
+        elif isinstance(activation, RemoteMainActivation):
+            emit(
+                _EARLIER_REMOTE_MAIN_FAILURE.format(
+                    action_id=record.action_id,
+                    after_sha=activation.after_sha[:_SHORT_COMMIT_LENGTH],
                     command=command,
                 )
             )

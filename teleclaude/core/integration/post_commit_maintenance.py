@@ -1,4 +1,4 @@
-"""Deterministic maintenance owed by canonical-main commit ranges and by platform events about a project."""
+"""Deterministic maintenance owed by canonical-main commit ranges, remote-main advancements and platform events about a project."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ from teleclaude.core.integration._maintenance_records import (
     MaintenanceActivation,
     MaintenanceRecordState,
     PendingSettlement,
+    RemoteMainActivation,
     SettlementOutcome,
     activation_has_records,
     activation_key,
@@ -47,6 +48,7 @@ from teleclaude.core.integration._maintenance_records import (
     read_record,
     read_records,
     record_path,
+    remote_main_activation_key,
     remove_record,
     write_activation_registration,
     write_event_file,
@@ -100,6 +102,7 @@ _UNKNOWN_ACTION_EXIT_CODE = 127
 _SUCCESS_OUTCOME = "success"
 _REPLAY_COMMIT_COMMAND = "telec repo maintenance retry --after-sha {after_sha} --action {action_id}"
 _REPLAY_EVENT_COMMAND = "telec repo maintenance retry --event-id {event_id} --action {action_id}"
+_REPLAY_REMOTE_MAIN_COMMAND = "telec repo maintenance retry --remote-main-sha {after_sha} --action {action_id}"
 ON_DEMAND_MAINTENANCE_COMMAND = "telec sync"
 _GIT_FAILURES = (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError, TypeError, ValueError)
 
@@ -341,6 +344,50 @@ def record_event_activation(project_root: Path, event: ReceivedEvent, action_ids
     return True
 
 
+def record_remote_main_activation(project_root: Path, before_sha: str | None, after_sha: str) -> bool:
+    """Persist the actions one remote-main advancement owes this project, before returning.
+
+    The advancement is observed from any checkout of the project, so the records go to the canonical
+    checkout, which owns the shared maintenance state. Returns whether the activation is recorded
+    there, now or by an earlier call; an advancement that owes nothing, a canonical checkout that is not
+    on main, and a declaration that cannot be resolved record nothing and return ``False``.
+    """
+    root = eligible_maintenance_root(resolve_project_state_root(project_root))
+    if root is None:
+        return False
+    try:
+        action_ids = tuple(
+            main_only_maintenance_action_ids_for_model([], CheckpointActivation.REMOTE_MAIN, maintenance_model(root))
+        )
+    except ConfigLoadError as exc:
+        logger.warning(_MAINTENANCE_SKIPPED_EVENT, reason=ActivationRefusal.CONFIGURATION_UNRESOLVED, error=str(exc))
+        return False
+    if not action_ids:
+        return False
+    activation = RemoteMainActivation(before_sha=before_sha, after_sha=after_sha)
+    key = remote_main_activation_key(after_sha)
+    with maintenance_activation_registration_lock(root):
+        owed = tuple(action_id for action_id in action_ids if not record_path(root, key, action_id).exists())
+        queued_at = datetime.now(UTC).isoformat()
+        for action_id in owed:
+            record = MaintenanceActionRecord(
+                activation=activation,
+                action_id=action_id,
+                queued_at=queued_at,
+                state=MaintenanceRecordState.PENDING,
+            )
+            write_record(record_path(root, key, action_id), record)
+    if owed:
+        logger.info(
+            _MAINTENANCE_RECORDED_EVENT,
+            trigger=MaintenanceTrigger.REMOTE_MAIN,
+            before_sha=before_sha,
+            after_sha=after_sha,
+            action_ids=owed,
+        )
+    return True
+
+
 def start_drain_contender(project_root: Path) -> bool:
     """Start one detached drain contender without making Git wait for its work."""
     root = project_root.resolve()
@@ -413,6 +460,8 @@ def replay_command(activation: MaintenanceActivation, action_id: str) -> str:
     """The command that replays one failed action of an activation with the identity it first ran for."""
     if isinstance(activation, EventActivation):
         return _REPLAY_EVENT_COMMAND.format(event_id=activation.event_id, action_id=action_id)
+    if isinstance(activation, RemoteMainActivation):
+        return _REPLAY_REMOTE_MAIN_COMMAND.format(after_sha=activation.after_sha, action_id=action_id)
     return _REPLAY_COMMIT_COMMAND.format(after_sha=activation.after_sha, action_id=action_id)
 
 
@@ -431,7 +480,7 @@ def observe_maintenance_action(project_root: Path, action_id: str) -> Maintenanc
     records = tuple(
         record
         for record in maintenance_status(root).records
-        if record.action_id == action_id and isinstance(record.activation, ActivationRange)
+        if record.action_id == action_id and isinstance(record.activation, ActivationRange | RemoteMainActivation)
     )
     active_records = tuple(
         record for record in records if record.state in (MaintenanceRecordState.PENDING, MaintenanceRecordState.RUNNING)
@@ -609,8 +658,8 @@ def _next_activation(
 ) -> MaintenanceActivation:
     """Pick the activation to run next from the records still owed.
 
-    Commit activations keep their ancestry order among themselves and event activations are
-    taken in the order they were recorded.
+    Commit activations keep their ancestry order among themselves; event and remote-main
+    activations are taken in the order they were recorded.
     """
     commit_queue = [
         (record.activation, record.queued_at) for record in actionable if isinstance(record.activation, ActivationRange)
@@ -618,11 +667,18 @@ def _next_activation(
     event_queue = [
         (record.activation, record.queued_at) for record in actionable if isinstance(record.activation, EventActivation)
     ]
+    remote_main_queue = [
+        (record.activation, record.queued_at)
+        for record in actionable
+        if isinstance(record.activation, RemoteMainActivation)
+    ]
     candidates: list[tuple[MaintenanceActivation, str]] = []
     if commit_queue:
         candidates.append(min(commit_queue, key=lambda queued: _commit_activation_order(repository, *queued)))
     if event_queue:
         candidates.append(min(event_queue, key=lambda queued: (_queued_time(queued[1]), queued[0].event_id)))
+    if remote_main_queue:
+        candidates.append(min(remote_main_queue, key=lambda queued: (_queued_time(queued[1]), queued[0].after_sha)))
     return min(candidates, key=lambda queued: _queued_time(queued[1]))[0]
 
 
@@ -641,6 +697,8 @@ def _trigger_for(activation: MaintenanceActivation) -> MaintenanceTrigger:
     """What started the run that performs an activation's actions."""
     if isinstance(activation, EventActivation):
         return MaintenanceTrigger.EVENT
+    if isinstance(activation, RemoteMainActivation):
+        return MaintenanceTrigger.REMOTE_MAIN
     return MaintenanceTrigger.COMMIT_BOUNDARY
 
 
@@ -657,6 +715,12 @@ def _fill_for_activation(root: Path, activation: MaintenanceActivation, command:
             event_file=str(event_file_path(root, activation.event_id)),
             event_type=activation.event_type,
             event_id=activation.event_id,
+            interpreter=sys.executable,
+        )
+    if isinstance(activation, RemoteMainActivation):
+        return fill_activation_range(
+            command,
+            ActivationRange(before_sha=activation.before_sha, after_sha=activation.after_sha),
             interpreter=sys.executable,
         )
     return fill_activation_range(command, activation, interpreter=sys.executable)

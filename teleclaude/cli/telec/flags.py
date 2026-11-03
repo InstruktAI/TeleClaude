@@ -590,6 +590,9 @@ FLAG_PUBLISH_BEFORE_SHA = Flag("--before-sha", desc="Literal range start commit 
 FLAG_PUBLISH_AFTER_SHA = Flag("--after-sha", desc="Literal publication commit id", hidden=True, arity=VALUE)
 FLAG_MAINTENANCE_AFTER_SHA = Flag("--after-sha", desc="Recorded activation tip", hidden=True, arity=VALUE)
 FLAG_MAINTENANCE_EVENT_ID = Flag("--event-id", desc="Recorded event activation id", hidden=True, arity=VALUE)
+FLAG_MAINTENANCE_REMOTE_MAIN_SHA = Flag(
+    "--remote-main-sha", desc="Recorded remote-main activation tip", hidden=True, arity=VALUE
+)
 FLAG_MAINTENANCE_ACTION = Flag("--action", desc="Recorded maintenance action id", hidden=True, arity=VALUE)
 FLAG_COMMIT_APPROVED = Flag(
     "--approved",
