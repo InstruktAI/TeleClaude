@@ -214,8 +214,11 @@ one without the daemon's record learns that the cluster Redis is away from its
 own failed append. Local events never enter the outbox.
 
 The outbox is the only copy of what it holds. Its entries leave it only by being
-forwarded, never by trimming, and the local Redis's append-only persistence
-keeps them across a restart of the daemon or of that Redis. A computer whose
+forwarded, never by trimming. A hold is acknowledged to its producer only once
+the local Redis has written it to disk under its append-only persistence
+(declared by the installation's local Redis configuration), so a held event
+survives a restart or crash of the daemon or of that Redis. A hold the local
+Redis cannot confirm is a publication failure. A computer whose
 local events share the cluster Redis has no outbox: there a cluster event that
 cannot be appended fails at its producer.
 
@@ -230,10 +233,13 @@ leaves the outbox without being appended.
 
 Forwarding keeps to what retained consumers can still read. It appends in
 bounded batches, and before each batch it waits while a consumer group on the
-target stream that has advanced since the previous batch would have entries it
-has not yet read trimmed out of the stream's retained window by the batch. A
-group that has not advanced holds nothing back, so a consumer whose computer is
-away cannot stall forwarding.
+target stream would have entries it has not yet read trimmed out of the
+stream's retained window by the batch, for every group whose computer is live
+in the transport's heartbeat registry
+(`local/projects/teleclaude/design/architecture/redis-transport`). A consumer
+that is still handling what it read holds forwarding back however long its
+handling takes. A group whose computer is not live holds nothing back, so a
+computer that is away cannot stall forwarding.
 
 ```mermaid
 flowchart LR
@@ -341,7 +347,10 @@ ordering guarantee for these separate transports.
 
 - A Redis that stops answering does not end the readers on it. Each Redis has
   one record of whether it answers and, while it does not, since when, whose
-  loss and return are logged once each. The cluster Redis's record also takes
+  loss and return are logged once each. Since is the moment the daemon first
+  found that Redis not answering after last finding it answering; the record
+  keeps that moment on disk until it observes the Redis answer again, so a
+  restart during an outage reports the same since. The cluster Redis's record also takes
   the losses the cross-computer transport meets on it
   (`local/projects/teleclaude/design/architecture/redis-transport`), so the
   event platform, the transport and the readiness answer read one record. A
@@ -375,15 +384,14 @@ ordering guarantee for these separate transports.
   Redis refuses is a publication failure.
 - While this computer holds events, its own consumers of the cluster stream
   receive them only once they are forwarded.
-- A consumer group that stops advancing while a backlog is forwarded can have
-  unread entries trimmed out of the stream's retained window; it recovers what
-  the window still holds, as for any slow consumer.
-- A Redis's since is the moment the running daemon first found it not
-  answering. A daemon that starts while a Redis is away reports that Redis
-  away since its own start.
-- The local Redis writes its append-only file once a second, so a crash of that
-  Redis, rather than a stop or restart, can lose the events held in the last
-  second before it.
+- A consumer on a live computer that stops reading while its unread entries
+  fill the retained window holds forwarding until it reads again or its
+  computer leaves the registry; the held events wait, and are not lost. A
+  consumer whose computer is away while a backlog is forwarded can have unread
+  entries trimmed out of the window; it recovers what the window still holds,
+  as for any consumer that is away.
+- A daemon that starts while a Redis is away, with no earlier loss on record,
+  reports it away since its own start.
 
 <!-- /planned:cluster-redis-outage-store-and-forward -->
 

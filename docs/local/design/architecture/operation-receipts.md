@@ -169,12 +169,10 @@ sequenceDiagram
 
 <!-- change:cluster-redis-outage-store-and-forward -->
 
-- **Daemon restart:** Leftover `running` operations, and leftover `queued` operations
-  of every kind except a held kind, are marked `stale` at startup. That transition
-  emits the failure event and wakes the recorded caller, so a caller that was waiting
-  learns the work was abandoned rather than waiting out a timeout. A queued operation
-  of a held kind keeps waiting for its condition. Work is never replayed
-  automatically.
+- **Daemon restart:** Leftover operations are marked `stale` at startup as Stale on
+  restart states. That transition emits the failure event and wakes the recorded
+  caller, so a caller that was waiting learns the work was abandoned rather than
+  waiting out a timeout.
 
 <!-- /planned-change:cluster-redis-outage-store-and-forward -->
 
