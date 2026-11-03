@@ -45,8 +45,19 @@ third-party behavior and commits only documentation
 
 ## Known caveats
 
+<!-- planned-change:task-plan-review -->
+
 - `sdlc/procedure/lifecycle/task/prepare-task` is the only remaining check before human authorization,
   and independently verifies this boundary before drafting a `task-plan`.
+
+<!-- change:task-plan-review -->
+
+- A drafted `task-plan` is reviewed independently by
+  `sdlc/procedure/lifecycle/task/review-task` before authorization; the review
+  re-checks the boundary `sdlc/procedure/lifecycle/task/prepare-task` verifies.
+
+<!-- /planned-change:task-plan-review -->
+
 - `task` carries no exemption from the general minimal duplicate-check every
   todo creation owes (`sdlc/policy/todo-creation-discipline`).
   It does not, however, have a kind-specific home for **deep** landscape

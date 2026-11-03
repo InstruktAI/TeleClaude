@@ -73,11 +73,25 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 5. **Write the `task-plan`.** `telec todo artifacts write {slug} task-plan "…"`.
 
+<!-- planned-change:task-plan-review -->
+
 6. **Request human authorization.** Present the `task-plan` to the human and ask
    them to authorize it — and, if they want it scheduled, to set a `schedule`
    (a one-shot instant or a recurring rule). Authorization is the human's call;
    the session never authorizes on their behalf, and writing the `task-plan` never
    implies approval.
+
+<!-- change:task-plan-review -->
+
+6. **Request authorization after review.** Once
+   `sdlc/procedure/lifecycle/task/review-task` has approved the current
+   `task-plan`, present it to the human and ask them to authorize it — and, if
+   they want it scheduled, to set a `schedule` (a one-shot instant or a
+   recurring rule). Authorization is the human's call; the session never
+   authorizes on their behalf, and writing the `task-plan` never implies
+   approval.
+
+<!-- /planned-change:task-plan-review -->
 
 7. **Hand off to the runner.** Once the human authorizes, the task becomes a
    runner candidate: the lifecycle runner dispatches `sdlc/procedure/lifecycle/task/run-task` when the
