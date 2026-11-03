@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from teleclaude.core.integration.checkpoint import ParkedCandidate
-from teleclaude.events.envelope import EventHome, EventLevel, EventVisibility
+from teleclaude.events.envelope import EventHome, EventLevel, EventVisibility, occurrence_id
 from teleclaude.events.producer import publish_event
 from teleclaude.events.references import SessionRef, TodoRef
 from teleclaude.events.schemas.sdlc import (
@@ -48,19 +48,24 @@ async def emit_review_approved(
     review_round: int,
     *,
     home: EventHome,
-    approved_at: str | None = None,
+    approved_at: str,
 ) -> str:
-    """Emit review.approved when a build review verdict stamps as approve."""
-    ts = approved_at or datetime.now(UTC).isoformat()
+    """Report one approving build review verdict as review.approved.
+
+    ``reviewer_session_id`` and ``approved_at`` are the stamping session and stamp
+    time of the verdict. The event id derives from them, so every report of the
+    same verdict carries the same id and a new verdict carries a new one.
+    """
     return await publish_event(
         ReviewApproved(
+            id=occurrence_id(ReviewApproved.type_name(), slug, reviewer_session_id, approved_at),
             subject=TodoRef(slug),
             home=home,
             data=ReviewApprovedData(
                 slug=slug,
                 review_round=review_round,
                 reviewer_session_id=reviewer_session_id,
-                approved_at=ts,
+                approved_at=approved_at,
             ),
         ),
         LegacyFacts(
