@@ -13,4 +13,5 @@
 @~/.teleclaude/docs/general/policy/message-identity-headers.md
 @~/.teleclaude/docs/general/policy/no-output-turn.md
 @~/.teleclaude/docs/general/policy/reminder.md
+@~/.teleclaude/docs/general/policy/shared-machine-resources.md
 @~/.teleclaude/docs/general/procedure/invoke-mcp-server-tools.md
