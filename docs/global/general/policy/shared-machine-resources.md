@@ -15,10 +15,9 @@ description: Free disk space is shared by every process on the machine; whoever 
   `node_modules`, `.venv`, build and test caches, temporary homes. It removes
   the checkout itself once nothing needs it. Committed work and anything not
   regenerable stay.
-- **An orchestrator closes each round clean.** When a round of delegated work
-  ends, the orchestrator removes the finished checkouts' regenerable output,
-  and every brief that creates a checkout tells the delegate to clean up what
-  it creates.
+- **Delegation carries the duty.** A session that delegates work which creates
+  checkouts names that cleanup in the brief, and when a round of delegated work
+  ends, removes the regenerable output its finished delegates left behind.
 - **Measure before building in a new place.** Before a build, install or full
   test run in a checkout that has no build output yet, check the volume's free
   space. With less than 20 GiB free, clean up output this session owns first;
@@ -29,17 +28,17 @@ description: Free disk space is shared by every process on the machine; whoever 
   evidence instead of rebuilding in another checkout.
 - **Clean what you own.** A session removes only output it or its delegates
   created, never another live session's checkout or build output. Output of a
-  session that has ended is the creating orchestrator's to remove.
+  session that has ended is the delegating session's to remove.
 
 ## Rationale
 
 Each isolated checkout builds its own full output, and parallel work
-multiplies it: one evening of parallel builders and reviewers left about
-125 GiB of Rust build output on a 500 GB disk. When the volume filled, writes
-failed in unrelated applications and a virtual machine stopped. That harm
-lands outside the session that caused it, where restoring the files repairs
-nothing. Output is regenerable, so removing it costs only a rebuild; keeping it
-costs everyone on the machine.
+multiplies it: a handful of concurrent builders and reviewers can produce
+enough regenerable build output to fill a machine's volume within hours. When
+the volume fills, writes fail in unrelated applications and their virtual
+machines stop. That harm lands outside the session that caused it, where
+restoring the files repairs nothing. Output is regenerable, so removing it
+costs only a rebuild; keeping it costs everyone on the machine.
 
 ## Scope
 
@@ -49,8 +48,8 @@ All agents, all sessions, all projects, on every machine they run on.
 
 The machine's `disk-headroom` job measures free space on a schedule, notifies
 the human when it runs low and, below a hard floor, removes regenerable build
-output from checkouts no running process uses. Reviewers and orchestrators treat
-a finished checkout left with its build output as a process miss.
+output from checkouts no running process uses. Reviewers treat a finished
+checkout left with its build output as a process miss.
 
 ## Exceptions
 
