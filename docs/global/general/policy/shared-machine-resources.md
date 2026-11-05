@@ -46,10 +46,8 @@ All agents, all sessions, all projects, on every machine they run on.
 
 ## Enforcement
 
-The machine's `disk-headroom` job measures free space on a schedule, notifies
-the human when it runs low and, below a hard floor, removes regenerable build
-output from checkouts no running process uses. Reviewers treat a finished
-checkout left with its build output as a process miss.
+Reviewers treat a finished checkout left with its build output as a process
+miss.
 
 ## Exceptions
 
