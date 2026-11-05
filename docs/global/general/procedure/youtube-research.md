@@ -40,8 +40,9 @@ Retrieve YouTube content (videos, transcripts, watch history, subscriptions) for
   `~/.teleclaude/scripts/helpers/youtube_helper.py --mode transcripts --ids <VIDEO_ID>`
 - **Searching for videos about "quantum computing", metadata only**:
   `~/.teleclaude/scripts/helpers/youtube_helper.py --mode search --query "quantum computing" --max-videos 10 --no-transcripts`
-- **Listing personal watch history from the last 7 days**:
-  `~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --period-days 7`
+- **Listing the 20 most recent videos in personal watch history**:
+  `~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --max-videos 20`
+  (history mode narrows by `--query` and `--channel`; it takes no date window)
 - **Listing subscribed channels**:
   `~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --list-channels`
 
@@ -54,7 +55,7 @@ Retrieve YouTube content (videos, transcripts, watch history, subscriptions) for
 
 ## Recovery
 
-- If the helper fails with `ModuleNotFoundError`, it was started through a bare interpreter such as `python3`; execute the helper path itself.
+- If the helper fails with `ModuleNotFoundError` and was started through a bare interpreter such as `python3`, that bypassed its declared dependencies; execute the helper path itself.
 - If cookies.txt is missing on this computer, history and subscriptions are unavailable here; `search` and `transcripts` still work, and a video's ID or URL from the human goes straight to `transcripts`.
 - If cookies.txt is missing or expired, export fresh cookies from a logged-in browser session and place them at `~/.config/youtube/cookies.txt`.
 - If the backoff file is stale (previous error more than 10 minutes ago), delete `~/.config/youtube/.backoff` and retry.
