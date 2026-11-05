@@ -40,6 +40,13 @@ machines stop. That harm lands outside the session that caused it, where
 restoring the files repairs nothing. Output is regenerable, so removing it
 costs only a rebuild; keeping it costs everyone on the machine.
 
+The 20 GiB floor is an operating reserve, not a promise that any build fits. A
+full build of one Rust workspace writes a few GiB of output, so the reserve
+leaves room for a round of parallel builds and for the human's applications and
+virtual machines to keep writing, while staying small against a typical
+volume. Stopping at the floor turns a machine that would fill into one session
+reporting the shortfall.
+
 ## Scope
 
 All agents, all sessions, all projects, on every machine they run on.
