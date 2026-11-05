@@ -1375,9 +1375,13 @@ install_blueprint_engine() {
 }
 
 # Package that owns the shared instrukt-ai-logs / instrukt-ai-log-setup
-# entrypoints. Never version-pinned — this is a shared machine-global CLI,
-# per third-party/uv/tool-management, and tracks latest.
+# entrypoints. A shared machine-global CLI that normally tracks latest, per
+# third-party/uv/tool-management. Held below 0.7 while those entrypoints move
+# out of the Python package into a Rust binary released from InstruktAI/logging:
+# 0.7 ships the Python writer SDK only, so an unpinned upgrade would remove
+# both entrypoints. The hold lifts when this installer installs that binary.
 LOG_RUNTIME_PACKAGE="instruktai-python-logger"
+LOG_RUNTIME_SPEC="instruktai-python-logger<0.7"
 LOG_RUNTIME_ENTRYPOINT="instrukt-ai-logs"
 
 # Detect a conflicting entrypoint owner, then ensure the logging package is
@@ -1397,7 +1401,7 @@ _log_runtime_ensure_current() {
         print_warning "$conflict_owner already publishes the $LOG_RUNTIME_ENTRYPOINT entrypoint (uv tool list) and may resolve a stale log root; TeleClaude will not remove it. Run 'uv tool uninstall $conflict_owner', then re-run make install."
     fi
 
-    if uv tool install --upgrade "$LOG_RUNTIME_PACKAGE" >> "$LOG_FILE" 2>&1; then
+    if uv tool install --upgrade "$LOG_RUNTIME_SPEC" >> "$LOG_FILE" 2>&1; then
         return 0
     fi
 
