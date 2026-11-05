@@ -27,8 +27,8 @@ Retrieve YouTube content (videos, transcripts, watch history, subscriptions) for
    - `subscriptions` — browse subscription feed or list subscribed channels.
 
 2. **Run the helper** with the selected mode and relevant flags:
-   - Always use the global helper path: `~/.teleclaude/scripts/helpers/youtube_helper.py`
-   - Pass `--mode <mode>` and the mode-specific flags (see Inputs in the skill wrapper).
+   - Execute the global helper path itself: `~/.teleclaude/scripts/helpers/youtube_helper.py`. Its `uv` shebang supplies the dependencies its PEP 723 header declares.
+   - Pass `--mode <mode>` and the mode-specific flags; `--help` lists them with their defaults.
 
 3. **Handle rate limits** — if YouTube returns HTTP 429/403/401, the script enforces a 10-minute backoff using `~/.config/youtube/.backoff`. Wait for the backoff to expire before retrying.
 
@@ -37,13 +37,13 @@ Retrieve YouTube content (videos, transcripts, watch history, subscriptions) for
 ### Examples
 
 - **Transcribing a YouTube video directly to stdout**:
-  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode transcripts --ids <VIDEO_ID>
-- **Searching for videos about "quantum computing"**:
-  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode search --query "quantum computing" --max-results 10
+  `~/.teleclaude/scripts/helpers/youtube_helper.py --mode transcripts --ids <VIDEO_ID>`
+- **Searching for videos about "quantum computing", metadata only**:
+  `~/.teleclaude/scripts/helpers/youtube_helper.py --mode search --query "quantum computing" --max-videos 10 --no-transcripts`
 - **Listing personal watch history from the last 7 days**:
-  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --days 7
+  `~/.teleclaude/scripts/helpers/youtube_helper.py --mode history --period-days 7`
 - **Listing subscribed channels**:
-  python3 ~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --list-channels
+  `~/.teleclaude/scripts/helpers/youtube_helper.py --mode subscriptions --list-channels`
 
 ## Outputs
 
@@ -54,6 +54,8 @@ Retrieve YouTube content (videos, transcripts, watch history, subscriptions) for
 
 ## Recovery
 
+- If the helper fails with `ModuleNotFoundError`, it was started through a bare interpreter such as `python3`; execute the helper path itself.
+- If cookies.txt is missing on this computer, history and subscriptions are unavailable here; `search` and `transcripts` still work, and a video's ID or URL from the human goes straight to `transcripts`.
 - If cookies.txt is missing or expired, export fresh cookies from a logged-in browser session and place them at `~/.config/youtube/cookies.txt`.
 - If the backoff file is stale (previous error more than 10 minutes ago), delete `~/.config/youtube/.backoff` and retry.
 - If channel search returns no results, try global search (omit `--channels`).
