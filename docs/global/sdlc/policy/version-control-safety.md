@@ -18,7 +18,7 @@ visibility: 'public'
 - Avoid surgical staging by default; prefer straightforward task-scoped commits.
 - Never discard or overwrite uncommitted work unless explicitly told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.
-- **A committed file changes only in a commit.** Automation that writes a committed file runs before the commit, in its pre-commit stage, and stages what it wrote into the commit being made. Automation that runs after a commit, merge or checkout, and scheduled or background jobs, writes only generated files that are not committed and machine-local state outside the repository.
+- **A committed file changes only in a commit.** Automation that writes a committed file runs before the commit, in its pre-commit stage, and stages what it wrote into the commit being made. Automation that runs after a commit, merge or checkout, and scheduled or background jobs, writes only files that are not committed, such as generated output and machine-local state.
 
 ## Rationale
 
