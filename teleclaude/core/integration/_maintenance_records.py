@@ -438,13 +438,13 @@ def _record_from_document(document: object) -> MaintenanceActionRecord:
 
 
 def _is_retired_obligation(document: object) -> bool:
-    """Recognize a record of the restart obligation that the daemon window held, in either wire shape.
+    """Recognize a stored record whose state is the retired restart-window state, in either wire shape.
 
-    The window and its ``held`` state were retired without bringing stored records forward. Such a
-    record has nothing left to do and its outcome fields are always null, so the forward migration
+    Such a record has nothing left to do and its outcome fields are null, so the forward migration
     is its removal: the current lifecycle represents "nothing left to do" as an absent record.
+    ``_RETIRED_HELD_STATE`` owns the state value.
 
-    Remove once no record written before the ``held`` state's removal can remain on any computer.
+    Remove once no record carrying that state can remain on any computer.
     """
     return isinstance(document, dict) and document.get("state") == _RETIRED_HELD_STATE
 
