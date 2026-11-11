@@ -18,10 +18,12 @@ visibility: 'public'
 - Avoid surgical staging by default; prefer straightforward task-scoped commits.
 - Never discard or overwrite uncommitted work unless explicitly told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.
+- **A committed file changes only in a commit.** Automation that writes a committed file runs before the commit, in its pre-commit stage, and stages what it wrote into the commit being made. Automation that runs after a commit, merge or checkout, and scheduled or background jobs, writes only generated files that are not committed and machine-local state outside the repository.
 
 ## Rationale
 
 - Prevents accidental data loss and preserves ownership of in‑progress work.
+- A committed file written after its commit becomes a change no one authored, left in whichever checkout the automation ran in, where the next commit there carries it unreviewed.
 - Resolving each edit target from the active root preserves worktree isolation before commit scoping runs.
 - Integration worktree isolation ensures delivery proceeds regardless of repo root state. Conflicts between local main and delivered changes surface naturally when the user pushes.
 
