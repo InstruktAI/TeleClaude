@@ -97,8 +97,24 @@ External shape evolution preserves independent consumers
   detail when the caller reads it.
 - **Delivery failure is terminal and harmless.** A wake that cannot be handed off is not
   retried. The row is unaffected and answers whoever asks later.
+
+<!-- planned-change:cluster-redis-outage-store-and-forward -->
+
 - **Stale on restart.** Operations in `queued` or `running` state are marked `stale`
   at daemon startup. Work is never replayed blindly. The receipt remains truthful.
+
+<!-- change:cluster-redis-outage-store-and-forward -->
+
+- **Stale on restart.** Operations in `running` state are marked `stale` at daemon
+  startup, and so are `queued` operations of every kind except a held kind. A held
+  kind is one whose work waits for a condition before it starts and whose row
+  carries that work whole; a queued operation of a held kind has not begun, so it
+  stays `queued` across a restart and starts once its condition holds. Once it has
+  started it is `running` and goes stale like any other. Work is never replayed
+  blindly. The receipt remains truthful.
+
+<!-- /planned-change:cluster-redis-outage-store-and-forward -->
+
 - **The row is the authority.** Outcome events are a nudge toward the row, never the
   record. If an event fires but the row is not yet terminal, trust the row.
 - **The owning computer owns the row.** An operation submitted on behalf of a caller
@@ -144,10 +160,22 @@ sequenceDiagram
 
 ## Failure modes
 
+<!-- planned-change:cluster-redis-outage-store-and-forward -->
+
 - **Daemon restart:** Leftover `queued` or `running` operations are marked `stale`
   at startup. That transition emits the failure event and wakes the recorded caller, so a
   caller that was waiting learns the work was abandoned rather than waiting out a timeout.
   Work is never replayed automatically.
+
+<!-- change:cluster-redis-outage-store-and-forward -->
+
+- **Daemon restart:** Leftover operations are marked `stale` at startup as Stale on
+  restart states. That transition emits the failure event and wakes the recorded
+  caller, so a caller that was waiting learns the work was abandoned rather than
+  waiting out a timeout.
+
+<!-- /planned-change:cluster-redis-outage-store-and-forward -->
+
 - **Background task panic:** If the task dies before the terminal write, the row stays
   `running` until the heartbeat window expires and then becomes `stale`, which delivers.
 - **Caller session gone at delivery:** The wake is dropped without retry and the row is

@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
+from functools import partial
 from typing import cast
 
 from teleclaude.constants import (
@@ -47,7 +48,7 @@ from teleclaude.core.next_machine.kinds import (
     KIND_TASK,
     PLAN_ONLY_PREPARE_KINDS,
 )
-from teleclaude.core.next_machine.provenance import read_dependency_artifact_snapshot
+from teleclaude.core.next_machine.provenance import read_dependency_artifact_snapshot, read_owned_snippet_ids
 from teleclaude.core.next_machine.review_evidence import (
     REVIEW_EVIDENCE_ARTIFACTS,
     ReviewEvidenceReason,
@@ -559,6 +560,7 @@ async def derive_lifecycle_drift(
     """Return per-artifact, per-class drift for every present tracked artifact."""
     _ = writer
     drift: DriftResult = {}
+    owned_snippet_ids_fn = partial(read_owned_snippet_ids, slug, repo_root=repo_root) if repo_root else None
     for artifact_name, state_key, applicable_classes in _DRIFT_TRACKED_ARTIFACTS:
         entry = getattr(model.artifacts, state_key)
         if not entry.digest and not entry.produced_at:
@@ -578,6 +580,7 @@ async def derive_lifecycle_drift(
                     model,
                     artifact_name,
                     snippet_digest_fn=snippet_digest_fn,
+                    owned_snippet_ids_fn=owned_snippet_ids_fn,
                 )
             elif class_name == DriftClass.UPSTREAM_SNIPPET:
                 class_drift[class_name] = derive_upstream_snippet_drift(
@@ -783,6 +786,8 @@ def _feature_phase(
     if not _review_current(
         model.prd_review, _artifact_digest(model, STATE_KEY_PRD), _current_report_digest("prd_review", report_digests)
     ):
+        if model.prd_review.cleared_by_substantive_drift:
+            return LifecyclePhase.PRD_DRAFTING
         return LifecyclePhase.PRD_REVIEW
     if not prd_approval_current(model):
         return LifecyclePhase.PRD_HUMAN_APPROVAL

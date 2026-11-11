@@ -440,8 +440,9 @@ the pause is kept in the conversation store and holds across a restart.
   carries a platform record of repository work, and the ledger. A record's
   pending revision is taken only when the ledger holds its transaction's
   commit entry. The daemon refreshes each GitHub-backed project it serves at
-  start and periodically, and the project's active computer refreshes it when
-  GitHub delivers a write the platform App made to the project's repository:
+  start and periodically, and the project's active computer and targets with
+  unresolved naming refresh it when GitHub delivers a write the platform App
+  made to the project's repository:
   it applies items whose effective GitHub revision is newer than the working
   copy's, including every item a new commit entry lists whether or not its
   issue changed since the last refresh, closes the questions their asking
@@ -451,10 +452,21 @@ the pause is kept in the conversation store and holds across a restart.
 - **Refresh on delivery.** Deliveries that arrive while a refresh of the
   project runs yield one more refresh after it. A delivery-triggered refresh
   that the republication throttle holds runs once the throttle ends.
+- **Naming recovery catch-up.** A target persists its naming-recovery
+  eligibility before enabling delivery adoption, then requests current-source
+  refresh. Startup and reconnection repeat this enable-then-refresh handover.
+  The refresh worker retains an owed delivery or catch-up request until a
+  source read completes; throttle deferral and failure leave it owed. The
+  hook handler records that request and returns without awaiting the read.
 - **Adoption wakes pickup.** A refresh that adopts an item emits the
   todo-updated event for it on the refreshing computer, so the project's
   pickup evaluates it
   (`local/projects/teleclaude/design/architecture/work-pickup`).
+  Adopted state commits before wake publication, and publication precedes
+  fallible refresh maintenance. An unaccepted wake stays owed by the worker
+  before another refresh batch begins; a later maintenance failure does not
+  discard it. Restart recovery uses the normal source refresh and full
+  project evaluation.
 
 <!-- /planned-change:event-driven-lifecycle-runner -->
 

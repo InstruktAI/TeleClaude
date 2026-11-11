@@ -198,6 +198,14 @@ transcript. If a session-originated send exhausts its delivery window, its calle
 receives the target and failure outcome while the target remains available for
 inspection or recovery.
 
+Once queue-backed platform-authored text has begun to be placed into a running
+agent's composer, a failure of that delivery attempt is final: the occurrence ends
+as a failed delivery, and the platform neither places it again nor submits anything
+on its behalf. What the begun placement left in the composer is uncertain and stays
+as it is, so the platform never adds a second copy of the occurrence. A terminal
+delivery notice sent for this failure never says the input did not reach the agent.
+Conversation text keeps its own path, waiting on an occupied composer.
+
 ### Raw-key commands
 
 Raw-key commands accept named special keys and an optional repeat count for the

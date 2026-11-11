@@ -109,6 +109,15 @@ Walk the governing-contracts entry points before drafting begins
 approved architecture carries the Governing contracts section, the plan
 references it; otherwise the plan carries that section itself.
 
+<!-- planned:spike-todo-kind -->
+
+A plan decision that rests on third-party behavior neither the project's nor
+the global third-party documentation records as verified is not decided here:
+file a spike for it and leave this phase open until the spike has run
+(`sdlc/policy/research-spikes`).
+
+<!-- /planned:spike-todo-kind -->
+
 ### 1b. Re-entry classification (read the dispatch reason)
 
 Re-entry is the base case for plan drafting — fresh production is the special

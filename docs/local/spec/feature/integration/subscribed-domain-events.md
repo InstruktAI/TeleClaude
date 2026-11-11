@@ -54,6 +54,15 @@ and is not repeated to those already told. It is attempted again a bounded
 number of times; one that still cannot be delivered is parked where it can be
 inspected, never counted as told.
 
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+A message that person-addressed delivery holds for a master it cannot reach
+(`local/projects/teleclaude/spec/messaging`, The master sends) is recorded as
+told when it is held, and is never sent again; what the master later does with
+it is that held message's own outcome.
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 ## Canonical fields
 
 ### Use cases

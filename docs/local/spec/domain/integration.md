@@ -272,6 +272,12 @@ implementation remain the current appliance contract.
 - `local/projects/teleclaude/adr/0150-the-service-manager-holds-the-webhook-receivers-listening-socket` — the receiver's service unit holds its listening socket across receiver restarts
 - `local/projects/teleclaude/adr/0120-discord-is-never-a-customer-surface` — Discord as a members-only surface
 
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+- `local/projects/teleclaude/adr/0155-a-send-held-for-the-master-is-a-durable-operation` — a person-facing send that waits for the master held as a durable operation, not in the event outbox
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 ## See Also
 
 - docs/local/adr/0069-vnext-authority-lives-in-separate-repository.md

@@ -60,6 +60,22 @@ A todo is held when either of these exists in its project on this computer:
 - A dispatch repeated after its own earlier start was accepted records that
   started session as the todo's driver instead of starting another.
 
+<!-- planned:event-driven-lifecycle-runner -->
+
+### Structured refusal causes
+
+Workflow admission publishes its unavailable cause through
+`AdmissionUnavailable`'s structured payload, which session creation carries
+to its caller beside the readable explanation
+(`local/projects/teleclaude/spec/feature/agent_runtime/run-session-with-command`). The
+runner consumes the declared cause to distinguish assignment-blocked work
+from other undecided starts; it does not classify the explanation's wording.
+An absent or unrecognised structured cause retains the existing generic
+undecided-start outcome.
+Claim reconciliation likewise reports when wrong or absent active assignment
+prevented its existing work, without declaring any claim free.
+<!-- /planned:event-driven-lifecycle-runner -->
+
 ### Across computers
 
 For a project on the GitHub workflow store, every computer holding a checkout

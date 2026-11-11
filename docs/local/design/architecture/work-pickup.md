@@ -22,16 +22,16 @@ requests reads the project's whole current work and decides from that, as
 
 **Inputs — what requests a pass for a project:**
 
-| Source                    | Where it comes from                                                                                                                      | Computer                       |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| Local todo events         | todo created for pickup, updated, phase advanced, delivered; the router's existing triggers                                              | the computer that emitted them |
-| Claim released or cleared | the active computer's clear of a claim, whether its own release or one another computer relays, emits the todo-updated event             | the active computer            |
-| Removal and reactivation  | the workflow's removal and reactivation emit the todo-updated event                                                                      | the computer that made them    |
-| Session ended             | the existing session-ended events for a session in the project's checkout                                                                | the session's computer         |
-| Adopted changes           | a store refresh that adopts an item emits the todo-updated event for it (`local/projects/teleclaude/design/architecture/workflow-store`) | the computer that refreshed    |
-| Active computer naming    | changes to the workflow-owned naming register: confirmed completion requests pickup; an unresolved naming retains a project retry        | the named computer             |
-| Project timer             | the project's next due instant: a schedule, or recovery of a failed start, unanswered claim judgment, failed pass or unresolved naming   | the computer that armed it     |
-| Daemon start              | one pass for every project the daemon serves, once its event platform runs                                                               | every computer                 |
+| Source                    | Where it comes from                                                                                                                                 | Computer                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Local todo events         | todo created for pickup, updated, phase advanced, delivered; the router's existing triggers                                                         | the computer that emitted them |
+| Claim released or cleared | the active computer's clear of a claim, whether its own release or one another computer relays, emits the todo-updated event                        | the active computer            |
+| Removal and reactivation  | the workflow's removal and reactivation emit the todo-updated event                                                                                 | the computer that made them    |
+| Session ended             | the existing session-ended events for a session in the project's checkout                                                                           | the session's computer         |
+| Adopted changes           | a store refresh that adopts an item emits the todo-updated event for it (`local/projects/teleclaude/design/architecture/workflow-store`)            | the computer that refreshed    |
+| Active computer naming    | changes to the workflow-owned naming register: confirmed completion requests pickup; an unresolved naming retains a project retry                   | the named computer             |
+| Project timer             | the project's next due instant: a schedule, or recovery of a failed start, unanswered claim judgment, failed pass or assignment-blocked naming work | the computer that armed it     |
+| Daemon start              | one pass for every project the daemon serves, once its event platform runs                                                                          | every computer                 |
 
 **Outputs:** the existing pass outcomes — orchestrator starts through driver
 admission (`local/projects/teleclaude/spec/feature/workflow/driver-admission`),
@@ -52,15 +52,16 @@ claim clearing, the pass log line — and the project's re-armed timer.
   a scheduled task it held back as not yet due, and a retry within a minute
   when a start failed for a reason that can clear by itself, when a claim is
   held only because a computer did not answer its judgment, or when the pass
-  itself failed, together with any unresolved naming's recovery contribution.
+  itself failed, together with any naming recovery contribution for
+  assignment-blocked dispatch or claim reconciliation.
   A pass that finds none of these clears the timer. The timer
   is derived state, kept in process memory and rebuilt from the project's
   work record and the local naming-recovery projection at daemon start.
 - **A refusal that names another computer is no failed start.** A start
   refused because another computer is the project's active computer, or
-  because the project names no active computer, arms no retry: the change
-  that would let it succeed — this computer being named active — wakes pickup
-  itself.
+  because the project names no active computer, arms no retry by itself.
+  While this target has unresolved naming, that refusal retains the naming
+  recovery contribution for otherwise-ready dispatch or claim reconciliation.
 - **The next occurrence of a recurring rule** is computed by the same rule
   owner that decides whether a schedule is due, so the timer fires inside the
   minute the rule matches.
@@ -126,21 +127,24 @@ sequenceDiagram
         Caller->>Register: retain completion and publish completion
         Register-->>Named: completed naming notification
         Named->>Named: request existing admitted runner directly
-        Named->>Register: retire after the pickup request is accepted
+        Named->>Register: acknowledge accepted pickup revision
     else proven no effect
-        Caller->>Register: retain no-effect outcome; retire
+        Caller->>Register: settle matching head; preserve aggregate work
     else remote outcome unknown
         Register-->>Named: current naming remains unresolved
-        Named->>Named: retain project retry until conclusive settlement
+        Named->>Named: retain uncertainty; retry assignment-blocked work
     end
 ```
 
-The workflow context owns a capacity-bounded naming register on the cluster
-Redis, separate from stream history. Each record identifies one naming, its
-repository and target, and its effect and recognition states. Registration
-reserves capacity and publishes its requested-work notification atomically.
-Only acknowledged registration permits the variable write. A failed, full or
-unacknowledged registration performs no GitHub mutation. The operation stays
+The workflow context owns one current naming cohort per repository and
+canonical target identity on the cluster Redis, separate from stream history.
+A cohort contains its current head identity and outcome, standing uncertainty,
+and pickup and acknowledgement revisions. Repeated namings reuse these fields;
+they do not append attempt records. Registration installs a fresh head and
+publishes requested work atomically, preserving earlier pickup work and arming
+standing uncertainty before displacing an unsettled head. Only acknowledged
+registration permits the variable write. A failed or unacknowledged
+registration performs no GitHub mutation. The operation stays
 inside the existing caller's wait; a late local result is uncertainty, not
 permission to start another mutation.
 
@@ -151,13 +155,21 @@ an interrupted writer leave the effect unknown. Recovery observes that
 obligation and does not repeat the external mutation. These are
 external-effect bookkeeping rules (`sdlc/policy/state-storage`).
 
+Head settlement and aggregate pickup work have separate transitions. A result
+settles only its matching head. A nonmatching late success leaves the newer
+head untouched and still advances pickup owed. Unknown outcomes preserve
+standing uncertainty. Pickup acceptance acknowledges only the revision it
+accepted; a stale acknowledgement cannot clear work a later completion added.
+Coalesced uncertainty is monotone until conclusive evidence settles every
+effect it represents. A later successful head or name match does not clear it.
+
 Each register update and its notification form a durable handover under
 `local/projects/teleclaude/design/architecture/event-delivery`. Notification
 facts distinguish registered work from confirmed completion. A workflow-owned
 live consumer on the target registers the affected project with a supervised
 recovery task and returns promptly. Its source recovery captures notification
 progress before recovering this computer's indexed records, then applies
-subsequent updates by naming identity and revision. Startup and reconnection
+subsequent updates by cohort incarnation, head identity and revision. Startup and reconnection
 use that same handover. Runner requests begin once the request surface is
 bound. No notification handler waits for a write or performs a preliminary
 GitHub read.
@@ -171,28 +183,47 @@ Source-confirmed retirement removes a projected record. Its capacity follows
 the current register and bounded notification-recovery window. Durable source
 state and derived projection remain distinct (`sdlc/policy/state-storage`).
 
-A confirmed completion requests the existing project runner directly. Driver
+A confirmed completion advances pickup owed and requests the existing project runner directly. Driver
 admission remains the authority for every start
 (`local/projects/teleclaude/spec/feature/workflow/driver-admission`). Once that
-request is accepted, the naming record retires; the daemon-start pass covers
-loss of the transient pickup request. A later naming can supersede the
+request is accepted, its pickup revision is acknowledged; the daemon-start
+pass covers loss of the transient pickup request. A later naming can supersede the
 completed one without making its notification an admission authority.
 
-An unresolved naming contributes a project-specific recovery deadline and
-requests an immediate pass when registered or recovered. Repeated recovery
-requests use the same admitted runner; they add no separate variable read in
-front of it. The contribution remains armed independently of pass completion,
-and a deadline reached during a pass records a follow-up owed. It shares the
-project's timer with schedules and other retries; settling one naming removes
-only that naming's contribution. Neither a negative variable read nor a
-positive match settles an unknown mutation.
+An unresolved head or standing uncertainty enables work-record adoption on
+this target even while another computer is active. Activation and recovery
+persist that eligibility before enabling delivery-triggered adoption, then
+request current-source catch-up and an initial full runner pass. Catch-up
+remains owed until it succeeds; it does not replace the initial pass when no
+new revision is adopted. The store owns the refresh and adoption handover
+(`local/projects/teleclaude/design/architecture/workflow-store`).
 
-Pending records have no age-based expiry or eviction. Capacity and record size
-are bounded by the naming register's code-owned limits. Repeated recovery
-allocates no new records, and records retire only on a conclusive no-effect
-outcome or accepted recognition of confirmed completion. A full register
-refuses another naming before its external effect. Register state follows the
-cluster Redis's persistence contract; stream trimming does not delete it.
+Naming uncertainty contributes a project retry only when assignment blocks
+an otherwise-ready dispatch or existing claim-reconciliation work. A pass
+without either removes that contribution, leaving the durable uncertainty
+dormant. The existing runner performs the decision; there is no preliminary
+variable read or variable-edge observer. A wrong-computer or no-active cause
+is carried by the existing structured admission payload through the create
+door and client. Assignment-blocked reconciliation is likewise a typed pass
+outcome. Neither is inferred from a formatted explanation.
+
+The contribution remains armed independently of pass completion, and a
+deadline reached during a pass records a follow-up owed. It shares the
+project's timer with schedules and other retries; recomputation changes only
+the naming contribution. Existing failed-pass, undecidable-start and
+unanswered-claim recovery retain their own contributions. Neither a negative
+variable read nor a positive match settles an unknown mutation.
+
+Current storage grows with retained repository/target identities, not with
+naming attempts. Each cohort and local projection replaces its fixed-size
+current fields; neither retains per-attempt history or tombstones. There is no
+logical full-register refusal. Ordinary retirement requires a settled head,
+no standing uncertainty and no unacknowledged pickup work, checked against the
+current incarnation and revision atomically. Uncertainty has no age-based
+expiry. Authorised scope retirement does not cancel an external effect;
+reactivation preserves unresolved uncertainty, and callbacks from a retired
+incarnation cannot mutate a new one. Register state follows the cluster
+Redis's persistence contract; stream trimming does not delete it.
 
 ## Failure modes
 
@@ -209,12 +240,12 @@ cluster Redis's persistence contract; stream trimming does not delete it.
   judges it again within a minute, for as long as the computer stays silent;
   the claim stays held meanwhile
   (`local/projects/teleclaude/spec/feature/workflow/driver-admission`).
-- **Naming registration fails or has no free capacity:** the variable is not
-  written and the naming is reported as refused.
+- **Naming registration fails:** the variable is not written and the naming
+  is reported as refused. Older unsettled namings do not prevent registration.
 - **The naming is interrupted after registration:** its remote effect stays
   unknown until conclusive evidence settles it. Its recovery contribution
-  survives daemon restart and stream trimming. The unknown record can occupy
-  capacity indefinitely.
+  survives daemon restart and stream trimming. Standing uncertainty can remain
+  in its cohort indefinitely without allocating attempt history.
 - **Completion publication fails after the confirmed write:** completion and
   the recognition obligation remain in the register; target source recovery
   and its already registered recovery task read current state.

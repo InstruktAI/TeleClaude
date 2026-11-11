@@ -1,5 +1,5 @@
 ---
-description: Produce the right visual form when a human needs to see something — a table, Mermaid source, or, exceptionally, a live canvas.
+description: Produce the right visual form when a human needs to see something — a table, Mermaid, or, exceptionally, a live canvas — and deliver it rendered, inline for a one-off answer and as a served scratchpad page for material that keeps changing.
 activation_trigger: Use when the human asks to see, draw, sketch, map, diagram, or visualize something — architecture, a flow, a sequence, a state machine, a decision, ownership, a timeline — or when a picture would land better than prose. Also activate before starting any canvas, whiteboard, or drawing server.
 ---
 
@@ -8,8 +8,11 @@ activation_trigger: Use when the human asks to see, draw, sketch, map, diagram, 
 ## Goal
 
 Give the human a picture they can read, in the cheapest form that answers their
-question. The agent is always the author; the human reads and reacts. Reserve
-heavyweight canvas tooling for the rare case that genuinely needs it.
+question, delivered rendered. The human reads on whatever device they are on,
+phones included, where markdown tables and Mermaid source arrive as plain text;
+a rich page reads at a glance. The agent is always the author; the human reads
+and reacts. Reserve heavyweight canvas tooling for the rare case that genuinely
+needs it.
 
 ## Preconditions
 
@@ -50,9 +53,23 @@ heavyweight canvas tooling for the rare case that genuinely needs it.
    agent — which no drawing does. Prefer `LR` over `TD` when a chain of
    decisions runs long, or the result sprawls vertically.
 
-4. **Hand the human something they can open.** A path to the source when their
-   surface renders Mermaid, or a rendered image when it does not. Do not make
-   them install or learn anything.
+4. **Deliver it rendered, in the form that fits its life in the session.** Read
+   from the conversation whether the material is settled or still moving:
+   - _One-off_ — the answer to a question asked once and done: a
+     self-contained HTML page as an inline visual reply, where the runtime
+     offers one.
+   - _Living_ — material that is still converging, that the human returns to,
+     or that this session or a handoff will extend (a design taking shape, an
+     overview, a report): a page in the activity's scratchpad workspace
+     (`general/procedure/scratchpad-workspace`). Its `index.html` links the
+     workspace's pages, and a static web server started on the workspace
+     folder serves it, so the human can open it from the surface they work
+     in, where the runtime makes local servers reachable; revising the page
+     and refreshing shows the change.
+
+   The source from step 3 stays where it lives; the rendered page is what the
+   human reads. Hand them something that opens, never a file path on a machine
+   they are not at, and never something to install or learn.
 
 5. **Escalation test — before starting any canvas server.** Both conditions must
    hold: the arrangement carries meaning the relations do not, **and** a person
@@ -73,7 +90,8 @@ heavyweight canvas tooling for the rare case that genuinely needs it.
 
 ## Outputs
 
-- A picture in the cheapest sufficient form, delivered so the human can open it.
+- A picture in the cheapest sufficient form, delivered rendered: inline for a
+  one-off answer, a served scratchpad page for living material.
 - Its source stored where the work lives — in the owning snippet, or in the
   activity's scratchpad workspace.
 
@@ -85,5 +103,9 @@ heavyweight canvas tooling for the rare case that genuinely needs it.
   layout engine's job — the form was chosen wrong. Move to Mermaid.
 - **Mermaid subgraphs will not express containment or adjacency.** The
   arrangement is the content; re-run step 5's test before reaching for a canvas.
+- **The human received source instead of a picture** (a raw table, Mermaid
+  text, a path). Render it and deliver it under step 4.
+- **Living material was delivered as an inline reply** and keeps being
+  revised. Move it to a page in the scratchpad workspace and serve it.
 - **A canvas server was started without the test passing.** Stop it, deliver the
   Mermaid, and keep the scratchpad clean.

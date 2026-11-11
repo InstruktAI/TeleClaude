@@ -63,8 +63,10 @@ contract governs only what happens when maintenance runs.
   `sdlc/policy/version-control-safety`.
 
 - **Blueprint.** In code-enabled projects, every canonical-main activation
-  owes the Blueprint action. Its committed snapshot, current-query guarantee,
-  and recovery are owned by `sdlc/spec/codebase-blueprint` and realized by
+  owes the Blueprint action, unless the project binds that action to
+  remote-main activation, which then owes it instead. Its committed snapshot,
+  query guarantee, and recovery are owned by `sdlc/spec/codebase-blueprint` and
+  realized by
   `local/projects/teleclaude/spec/feature/workflow/blueprint-freshness`.
 
 - **Location.** Maintenance performs the owed `main_only` actions from canonical
@@ -177,6 +179,24 @@ contract governs only what happens when maintenance runs.
   `telec repo maintenance status` names each event activation with that replay.
   An event activation records no integrator judgment: the maintenance an advance
   of canonical main owes is that advance's own activation.
+
+- **Remote-main activations.** The executor also performs the actions a
+  project's remote-main activation bindings owe when the checkout's
+  remote-tracking main advances. The reference-transaction hook observes the
+  committed update of that ref, from a push or a fetch in the canonical
+  checkout or any of its worktrees, and records the activation on the
+  canonical checkout with the ref's previous and new object ids, then starts a
+  drain contender and returns without waiting; an uncommitted or rejected
+  update records nothing, and the hook never fails the Git operation it
+  observes. A remote-main activation is identified by its new object id, its
+  records sit beside the commit and event activations' records under the same
+  drain lock, a drain takes them in the order they were recorded, and its
+  attempts and outcomes are marked as remote-main activations in the
+  structured records. It records no integrator judgment and announces no
+  settlement, so it never holds a canonical-main publication. A failed action
+  is replayed with `telec repo maintenance retry` for its original
+  remote-main activation, and `telec repo maintenance status` names each one
+  with that replay.
 
 - **Observation.** Every attempt and terminal outcome retains the immutable
   activation and action identity in structured records. The commit boundary

@@ -129,7 +129,6 @@ _MEMORY_TRANSITION_PASS_FAILED_EVENT = "memory.transition.pass_failed"
 _MEMORY_TRANSITION_INCOMPLETE_EVENT = "Conversation-memory transition incomplete; retrying until complete"
 _MEMORY_TRANSITION_END_REASON = "conversation_memory_transition"
 _DUPLICATE_RUNTIME_CONSUMER_NAMES_ERROR = "runtime and platform event consumers must have unique names"
-_DISCORD_VOICE_ADAPTER_REQUIRED = "Discord runtime voice consumer has no active adapter capability"
 _DISCORD_ADAPTER_KEY = "discord"
 _RUNTIME_EVENT_PRODUCER_CONFIGURED_EVENT = "Internal runtime EventProducer configured"
 
@@ -477,11 +476,9 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         )
 
     async def _recover_discord_runtime_status(self) -> None:
-        """Recover voice focus through Discord's owner-local source query."""
+        """Recover voice focus through Discord's owner-local source query; an unregistered adapter has none."""
         adapter = self.client.adapters.get(_DISCORD_ADAPTER_KEY)
         if adapter is None:
-            if config.discord.token:
-                raise RuntimeError(_DISCORD_VOICE_ADAPTER_REQUIRED)
             return
         await cast(RuntimeVoiceSurface, adapter).recover_runtime_voice_focus()
 

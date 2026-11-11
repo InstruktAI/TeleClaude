@@ -48,8 +48,9 @@ when it reads it after the request's deadline.
 computer cannot reach the cluster Redis, a request addressed to another
 computer fails immediately, without waiting out its deadline, with an error
 that names the computer and the unreachable cluster Redis as the reason, and
-nothing runs anywhere. A person-addressed message is the one request that waits
-instead (`local/projects/teleclaude/spec/messaging`, The master sends).
+nothing runs anywhere. A person-addressed message follows its own rule for an
+unreachable master (`local/projects/teleclaude/spec/messaging`, The master
+sends).
 
 <!-- /planned:cluster-redis-outage-store-and-forward -->
 

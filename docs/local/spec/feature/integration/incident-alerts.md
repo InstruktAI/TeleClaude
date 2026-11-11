@@ -57,6 +57,15 @@ never counted as told. When the thing works again before an outstanding failure
 message was delivered, that administrator is told the recovery, with how long
 the thing was broken, instead of the stale failure.
 
+<!-- planned:cluster-redis-outage-store-and-forward -->
+
+A message that person-addressed delivery holds for a master it cannot reach
+(`local/projects/teleclaude/spec/messaging`, The master sends) is recorded as
+told when it is held, and is never sent again; what the master later does with
+it is that held message's own outcome.
+
+<!-- /planned:cluster-redis-outage-store-and-forward -->
+
 ## Canonical fields
 
 ### Use cases

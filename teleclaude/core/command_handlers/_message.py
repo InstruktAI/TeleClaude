@@ -72,7 +72,7 @@ from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, Pro
 
 from ._delivery_notices import notify_delivery_exhausted as notify_delivery_exhausted
 from ._message_acceptance import record_accepted_input_metadata
-from ._message_delivery import inject_inbound_text
+from ._message_delivery import PlacementProbe, inject_inbound_text_tracking_placement
 from ._recovered_input import recovered_entry_facts, recovered_posted_at_stamp, with_recovered_notice
 from ._utils import STARTUP_GATE_POLL_INTERVAL_S, STARTUP_GATE_TIMEOUT_S, StartPollingFunc
 
@@ -738,6 +738,7 @@ async def deliver_inbound(
             session_id=session_id,
             source_occurrence_id=row["occurrence_key"],
         )
+    placement = PlacementProbe()
     results: tuple[object, ...] | None = None
     delivery_session = session
     while results is None:
@@ -771,12 +772,13 @@ async def deliver_inbound(
             # ownership; the mark is read again now that no relaunch is mid-flight.
             if not relaunch_awaiting_readiness(session_id):
                 results = await asyncio.gather(
-                    inject_inbound_text(
+                    inject_inbound_text_tracking_placement(
                         delivery_session,
                         message_text,
                         active_agent=active_agent,
                         authority=authority,
                         readiness=client.runtime_readiness,
+                        on_placement_begun=placement.mark,
                     ),
                     return_exceptions=True,
                 )
@@ -799,10 +801,12 @@ async def deliver_inbound(
                 stage=tmux_io.UserTurnDeliveryStage.CONFIRMATION.value,
                 reason=tmux_io.UserTurnDeliveryReason.EXECUTION_ERROR.value,
             )
+        placement.raise_if_begun(session_id, tmux_io.UserTurnDeliveryStage.CONFIRMATION, cause=tmux_result)
         raise tmux_result
     if isinstance(tmux_result, tmux_io.UserTurnDeliveryResult):
         logger.info("session_input_delivery_decided", **_delivery_log_fields(tmux_result))
         if not tmux_result.succeeded:
+            placement.raise_if_begun(session_id, tmux_result.stage)
             raise RuntimeError(f"tmux delivery failed for session {session_id}: {tmux_result.reason.value}")
     elif tmux_result is False:
         raise RuntimeError(f"tmux delivery failed for session {session_id}")

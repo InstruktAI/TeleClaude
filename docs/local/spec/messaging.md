@@ -61,13 +61,16 @@ requesting computer holds: the content of the file `--file` names there, and
 the originating session's Discord backlink. The caller addresses a person,
 never a computer. While the master cannot be reached — the requesting computer
 cannot reach the cluster Redis, or no master is live — the request is held
-with what it carries: the caller is told that the message waits for the master,
-the request is carried once the master is reachable, and the master's outcome,
-a refusal included, is reported to the caller once it is known. A computer
-whose local events share the cluster Redis has nowhere to hold a request while
-that Redis is unreachable, and there the request fails naming it. When several
-computers declare themselves master the request fails naming them; no other
-computer sends in its place.
+with what it carries as a durable operation of a held kind, whose condition is
+a reachable master
+(`local/projects/teleclaude/design/architecture/operation-receipts`): the caller
+receives its receipt, which says the message waits for the master, at once.
+Held requests are carried in the order they were made once the master is
+reachable, and the master's outcome, a refusal included, is the operation's
+outcome. A message the daemon sends on its own behalf is held the same way. On a computer whose local
+events share the cluster Redis, a request made while that Redis is unreachable
+fails naming it. When several computers declare themselves master the request
+fails naming them; no other computer sends in its place.
 
 <!-- /planned-change:cluster-redis-outage-store-and-forward -->
 

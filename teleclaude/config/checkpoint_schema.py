@@ -64,7 +64,7 @@ class CheckpointScopeConfig(ClosedModel):
 
 
 class CheckpointBindingConfig(ClosedModel):
-    """Maps exactly one path, event, or canonical-main trigger to action ids."""
+    """Maps exactly one path, event, or main-branch activation trigger to action ids."""
 
     scope: CheckpointScopeConfig = CheckpointScopeConfig()
     events: list[str] | None = None
@@ -85,7 +85,7 @@ class CheckpointBindingConfig(ClosedModel):
 
     @model_validator(mode="after")
     def validate_single_trigger_kind(self) -> CheckpointBindingConfig:
-        """A binding names exactly one of paths, events, or canonical-main activation."""
+        """A binding names exactly one of paths, events, or main-branch activation."""
         has_scope = _EVENT_BINDING_SCOPE_FIELD in self.model_fields_set
         if self.activation is not None and (self.events is not None or has_scope):
             raise ValueError(_ACTIVATION_TRIGGER_KIND_ERROR)

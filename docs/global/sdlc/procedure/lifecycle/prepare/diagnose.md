@@ -214,6 +214,15 @@ rather than disqualifying it.
 question asks for, and demanding a fresh check every time turns interrogation into ceremony.
 What matters is that the answer bottoms out, not that it is new.
 
+<!-- planned:spike-todo-kind -->
+
+**Third-party behavior bottoms out in verified documentation.** A transition that rests on how
+a third party behaves, which neither the project's nor the global third-party documentation
+records as verified, is not settled by the peer's account. File a spike for it and leave the
+diagnosis unsettled until the spike has run (`sdlc/policy/research-spikes`).
+
+<!-- /planned:spike-todo-kind -->
+
 **The peer may attack the interrogation.** A question can assume the wrong boundary, or
 contradict evidence already recorded. The peer says so and shows it, and that answer is then
 interrogated like any other. The driver's authority over the lifecycle is never authority

@@ -401,6 +401,15 @@ that is not the project's active computer, a project naming no active computer
 or one whose active computer cannot be read, or no decision within the start
 budget — returns HTTP 503 with a detail naming why, and creates no session.
 
+<!-- planned:event-driven-lifecycle-runner -->
+
+That response also carries the workflow owner's declared structured admission
+failure, preserving its cause through the API client
+(`local/projects/teleclaude/spec/feature/workflow/driver-admission`). The
+existing detail and status remain available to earlier clients; the optional
+structured carrier accompanies them rather than replacing them.
+<!-- /planned:event-driven-lifecycle-runner -->
+
 #### UC-DSD3: A second commit reviewer for the same driver, project, and mode is refused
 
 Commit review carries no todo slug — its subject is a commit series whose SHA set changes

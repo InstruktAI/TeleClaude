@@ -11,6 +11,12 @@ The prepare state machine is the workflow capability that drives a Todo through 
 
 A `kind=task` Todo does not enter this machine. Task preparation is a separate non-SDLC lane: `sdlc/procedure/lifecycle/task/prepare-task` reads `input`, writes the `task-plan`, and requests human authorization — dispatched by the lifecycle runner, never by this state machine or `telec todo prepare`. The phase advances to `prepared` on `task-plan` presence without any PRD, architecture, implementation-plan, or reviewer verdict.
 
+<!-- planned:spike-todo-kind -->
+
+A `kind=spike` Todo does not enter this machine either; it is prepared in the task lane without authorization (`local/projects/teleclaude/spec/feature/workflow/research-spike`). A Todo this machine drives that depends on an undelivered spike is not advanced past its current phase (`local/projects/teleclaude/spec/feature/workflow/dependency-graph`).
+
+<!-- /planned:spike-todo-kind -->
+
 Preparation is local-first and runs on the project's `main` branch with no worktree, which is what authorizes it to write artifacts and snippets to the canonical doc layer. The machine itself owns no UI or worker code; it owns the invariants on transitions and the resolution of which next instruction matches the current evidence. When the entrypoint is a structural holder, prepare refuses to operate on the holder directly and routes the operator to the runnable direct children instead. When tracked artifacts have drifted along any of the classes enumerated in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, age), the machine surfaces drift as a blocker and routes to a drift-analyzer worker before the Todo may reach `prepared`; the per-artifact collapsed status follows the `substantive > pending > cosmetic > fresh` priority rule. A loop guard bounds in-call internal transitions so a misconfigured state always surfaces an explicit error rather than spinning silently.
 
 ## Canonical fields

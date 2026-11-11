@@ -110,10 +110,24 @@ description: Decide whether a todo should exist, audit that decision at preparat
   directly merely because the filesystem permits it. If ownership cannot be
   established, resolve it before dispatching or filing rather than letting the
   current working directory decide.
+
+<!-- planned-change:spike-todo-kind -->
+
 - **Documentation-only work creates no todo.** It executes in context under
   `general/policy/documentation-discipline`; when a snippet enters
   consideration, `general/procedure/doc-snippet-authoring` owns the authoring
   gate.
+
+<!-- change:spike-todo-kind -->
+
+- **Documentation-only work creates no todo.** It executes in context under
+  `general/policy/documentation-discipline`; when a snippet enters
+  consideration, `general/procedure/doc-snippet-authoring` owns the authoring
+  gate. A spike is the one exception: its documentation comes from its own
+  investigation, so it is filed as a `kind=spike` todo
+  (`sdlc/policy/research-spikes`).
+
+<!-- /planned-change:spike-todo-kind -->
 
 - **Execute settled code work in context.** When the approach is known,
   the edit is bounded, and the work needs neither a plan, a builder, nor a
@@ -414,6 +428,14 @@ would dispatch a fresh worker that never saw the conversation which made the
 content correct. Re-deriving that intent cold destroys the information the
 handoff was supposed to preserve; routing it in context avoids the loss rather
 than merely saving lifecycle ceremony.
+
+<!-- planned:spike-todo-kind -->
+
+A spike's documentation is not handed a conversation: its content is what its
+own investigation verifies. The loss the in-context rule prevents cannot occur,
+so the rule does not bind it.
+
+<!-- /planned:spike-todo-kind -->
 
 The absence of an automatic actor proves only how the system is arranged. When
 the contract assigns recovery to an observing agent, filing automation from

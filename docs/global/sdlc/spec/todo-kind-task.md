@@ -6,11 +6,27 @@ description: 'Canonical definition of the `task` todo kind — the non-SDLC, sid
 
 ## What it is
 
+<!-- planned-change:spike-todo-kind -->
+
 `task` is one of the four canonical todo kinds. It is the non-SDLC,
 side-effect-only kind: a durable, human-authorized `task-plan` that performs
 operations against the outside world. It never enters the SDLC — no PRD,
 architecture, implementation-plan, or reviewer verdict — and is drafted by
 `sdlc/procedure/lifecycle/task/prepare-task`, authorized by a human, and executed by `sdlc/procedure/lifecycle/task/run-task`.
+
+<!-- change:spike-todo-kind -->
+
+`task` is one of the five canonical todo kinds. It is the non-SDLC,
+side-effect-only kind: a durable, human-authorized `task-plan` that performs
+operations against the outside world. It never enters the SDLC — no PRD,
+architecture, implementation-plan, or reviewer verdict — and is drafted by
+`sdlc/procedure/lifecycle/task/prepare-task`, authorized by a human, and executed by `sdlc/procedure/lifecycle/task/run-task`.
+
+The task lane also runs spikes: a spike is a pre-authorized task that verifies
+third-party behavior and commits only documentation
+(`sdlc/spec/todo-kind-spike`).
+
+<!-- /planned-change:spike-todo-kind -->
 
 ## Canonical fields
 
@@ -29,8 +45,19 @@ architecture, implementation-plan, or reviewer verdict — and is drafted by
 
 ## Known caveats
 
+<!-- planned-change:task-plan-review -->
+
 - `sdlc/procedure/lifecycle/task/prepare-task` is the only remaining check before human authorization,
   and independently verifies this boundary before drafting a `task-plan`.
+
+<!-- change:task-plan-review -->
+
+- A drafted `task-plan` is reviewed independently by
+  `sdlc/procedure/lifecycle/task/review-task` before authorization; the review
+  re-checks the boundary `sdlc/procedure/lifecycle/task/prepare-task` verifies.
+
+<!-- /planned-change:task-plan-review -->
+
 - `task` carries no exemption from the general minimal duplicate-check every
   todo creation owes (`sdlc/policy/todo-creation-discipline`).
   It does not, however, have a kind-specific home for **deep** landscape

@@ -106,20 +106,27 @@ the composed model rather than imposing their own capability rules, under
 
 TeleClaude owns both platform base registries. A project references their ids in its bindings and extends the registry whose eligibility contract its project-specific action satisfies.
 
-Canonical-main activation bindings select main-only maintenance independently
-of the changed-path set, including an empty commit. They are a declared trigger
-alongside path and event bindings, resolved by the shared model and matcher.
-The agent-stop engine continues to select judgment actions from path bindings;
-an activation binding names maintenance only. Capability composition admits the
-Blueprint action and its activation binding only in code-enabled projects.
+Activation bindings select main-only maintenance independently of the
+changed-path set. Two activations exist: a canonical-main activation, owed by
+every canonical-main commit or merge including an empty commit, and a
+remote-main activation, owed by every advance of the checkout's remote-tracking
+main. They are a declared trigger alongside path and event bindings, resolved
+by the shared model and matcher. An activation binding a project overlay
+declares for an action replaces every base activation binding of that action,
+so a project moves an action from one activation to the other by declaring it
+once. The agent-stop engine continues to select judgment actions from path
+bindings; an activation binding names maintenance only. Capability composition
+admits the Blueprint action and its activation binding only in code-enabled
+projects.
 
 Blueprint maintenance runs after its toolchain prerequisites, while the daemon
 serves. Its writer takes the Blueprint
-serialization boundary beneath the maintenance drain boundary. Query
-observation waits through the maintenance completion interface and then pins a
-published generation; it performs no extraction and holds no Blueprint lock
-while waiting for maintenance. This lock order and one execution owner follow
-`sdlc/policy/code-quality-practices` and `sdlc/principle/design-fundamentals`.
+serialization boundary beneath the maintenance drain boundary. A query pins a
+published generation; only when none exists does it first wait through the
+maintenance completion interface. It performs no extraction and holds no
+Blueprint lock while waiting for maintenance. This lock order and one execution
+owner follow `sdlc/policy/code-quality-practices` and
+`sdlc/principle/design-fundamentals`.
 
 The cache baseline and query guarantee belong to `sdlc/spec/codebase-blueprint`;
 the local behavioral contract is
@@ -244,11 +251,11 @@ invocation home and the homes nested beneath it when it receives a home.
 
 ### Invariant 30 — Event bindings
 
-Each binding declares exactly one trigger: changed paths, event types, or a
-canonical-main activation. `CheckpointBindingConfig` and its closed activation
-type own the declaration shape; the effective model keeps these trigger kinds
-separate. Activation bindings select main-only maintenance. Trigger integrity
-follows `sdlc/policy/code-quality-practices`.
+Each binding declares exactly one trigger: changed paths, event types, or an
+activation — canonical-main or remote-main. `CheckpointBindingConfig` and its
+closed activation type own the declaration shape; the effective model keeps
+these trigger kinds separate. Activation bindings select main-only
+maintenance. Trigger integrity follows `sdlc/policy/code-quality-practices`.
 
 An event binding names exact event types or group patterns resolved by the
 platform's shared event-type matcher, and owes only maintenance-registry

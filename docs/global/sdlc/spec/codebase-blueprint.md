@@ -36,25 +36,18 @@ Graphify CLI, adopted as-is behind the `graph.json` data-contract seam.
 
 The graph and freshness manifest form one committed generation at the owning
 project root, gitignored and shared across worktrees. The manifest identifies
-the exact committed canonical-main revision extracted, its generation time,
-and the generation outcome. Freshness compares that revision with canonical
-main, independently of whether it has been pushed. A worktree reads the owning
-checkout's baseline rather than its own branch.
+the exact committed revision extracted, its generation time, and the
+generation outcome. The revision a project's Blueprint follows is its
+**baseline**: committed canonical main, or, in a project that binds Blueprint
+maintenance to remote-main activation, the remote main revision its checkout
+last observed. A worktree reads the owning checkout's Blueprint rather than
+its own branch.
 
 Publication activates a complete graph and matching manifest together. A
 consumer pins one generation while reading it; an unsuccessful or interrupted
 extraction does not activate an incomplete generation. These invariants follow
 the explicit state and concurrency ownership in
 `sdlc/policy/code-quality-practices`.
-
-### Installed source baseline
-
-When a project's installation contract selects an immutable release checkout,
-that checkout's Blueprint baseline is its selected installed commit. Generation,
-freshness checks and recovery consume the same committed-source selection from
-the owning maintenance boundary. Canonical-main baseline rules apply to other
-checkouts. Source ownership and consistent reads follow
-`sdlc/policy/domain-ownership` and `sdlc/policy/code-quality-practices`.
 
 ### Languages
 
@@ -71,28 +64,33 @@ exploration.
 
 ### Generation (automation, never agents)
 
-Blueprint generation is deterministic canonical-main maintenance in projects
-that enable the code capability. Every canonical-main commit or merge
-activation owes that maintenance, including documentation-only advances and
-empty commits. Git returns after recording the obligation and starting the
-maintenance executor; extraction completes through that executor. A commit or
-merge in a linked worktree changes no shared Blueprint baseline.
+Blueprint generation is deterministic maintenance in projects that enable the
+code capability. By default every canonical-main commit or merge activation
+owes it, including documentation-only advances and empty commits. A project
+may instead bind it to remote-main activation: every advance of its checkout's
+remote-tracking main, by a push from that checkout or by a fetch, owes it, and
+a canonical-main commit no longer does. Git returns after recording the
+obligation and starting the maintenance executor; extraction completes through
+that executor. A commit or merge in a linked worktree changes no shared
+Blueprint.
 
-The maintenance action extracts an isolated snapshot of a committed
-canonical-main revision and publishes to the owning checkout's shared cache.
+The maintenance action extracts an isolated snapshot of the project's committed
+baseline revision and publishes to the owning checkout's shared cache.
 Uncommitted files and branch-only work are outside that snapshot. The action
-converges to the latest committed main tip observed when it runs; an already
-current generation completes without re-extraction. Each obligation retains
-its activation identity, while its outcome identifies the revision actually
+converges to the latest baseline revision observed when it starts; an
+obligation whose baseline revision is already published when it runs completes
+without re-extraction, while an advance observed after an extraction started
+is extracted by a later obligation. Each obligation retains its
+activation identity, while its outcome identifies the revision actually
 extracted. A later obligation remains eligible after an earlier action ends,
 and replay converges forward rather than restoring an older cache.
 
 All extraction and publication share one writer serialization boundary.
 Generation failure is a failed maintenance outcome with a recovery reference.
 On-demand maintenance performs the same action as recovery. Query surfaces
-consume the resulting generation and observe maintenance completion; generation
-has no public command verb. The engine remains pinned and installed through
-the project's toolchain. A smaller valid extraction can replace a larger graph.
+consume the published generation; generation has no public command verb. The
+engine remains pinned and installed through the project's toolchain. A smaller
+valid extraction can replace a larger graph.
 
 One maintenance owner and reuse of the existing executor follow
 `sdlc/principle/design-fundamentals`; publication and failure outcomes follow
@@ -143,33 +141,33 @@ that no implementation exists.
 
 ### Fallback
 
-A successful blast-radius query uses a complete generation matching committed
-canonical main at the query's freshness observation. A fresh query answers
-immediately. A query encountering outstanding Blueprint maintenance observes
-its completion within the query's bounded wait, then rechecks freshness and
-reads one consistent generation. Canonical and worktree callers receive the
-same shared-baseline guarantee.
+A blast-radius query answers from the complete published generation it pins,
+whether or not that generation's revision matches the asking checkout. Every
+answer names the generation's revision and generation time, the project's
+current baseline revision, whether Blueprint maintenance is outstanding or has
+failed, and the asking checkout's own revision. It lists the files in which the
+asking checkout — committed and uncommitted — differs from the generation's
+revision, marks the changed files asked about that are among them, and names
+the command that shows that difference. The asking checkout is the canonical
+checkout or the slug worktree the query runs in, and both read the same
+generation. Changed files given as absolute paths resolve against the asking
+checkout.
 
-A failed, absent, interrupted, or overdue refresh, an unresolved canonical-main
-revision, or an unreadable graph yields an explicit unavailable result with
-the applicable maintenance recovery reference. The agent states the gap and
-uses manual exploration. An older graph is retained cache state, not a
-successful current answer. Unsupported languages and blind spots retain the
-manual exploration contract above. Failure visibility follows
-`sdlc/principle/design-fundamentals`.
+Only when no complete generation exists does a query encountering outstanding
+Blueprint maintenance observe its completion within the query's bounded wait.
+An absent, incomplete or unreadable generation, or a generation revision the
+repository does not contain, yields an explicit unavailable result with the
+applicable maintenance recovery reference; the agent states the gap and uses
+manual exploration. A difference that cannot be computed is reported as such
+beside a still-usable answer. Whether a difference matters to the change at
+hand is the agent's judgment under `sdlc/procedure/blast-radius-discovery`,
+never a revision equality or count the query applies. Unsupported languages
+and blind spots retain the manual exploration contract above. Failure
+visibility follows `sdlc/principle/design-fundamentals`.
 
 ### Use cases
 
 #### UC-BP1: A query observes current maintenance before answering
-
-```gherkin
-Given the shared Blueprint is behind committed canonical main
-And automatic Blueprint maintenance is outstanding
-When an agent asks for the blast radius of a changed file
-Then the query observes maintenance completion within its wait bound
-And a successful answer uses a complete graph matching committed canonical main at its freshness observation
-And the query performs no extraction itself
-```
 
 #### UC-BP2: A slug-worktree merge preserves the shared baseline
 

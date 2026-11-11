@@ -73,15 +73,56 @@ no PRD, architecture, implementation-plan, or reviewer verdict applies.
 
 5. **Write the `task-plan`.** `telec todo artifacts write {slug} task-plan "…"`.
 
+<!-- planned-change:task-plan-review -->
+
 6. **Request human authorization.** Present the `task-plan` to the human and ask
    them to authorize it — and, if they want it scheduled, to set a `schedule`
    (a one-shot instant or a recurring rule). Authorization is the human's call;
    the session never authorizes on their behalf, and writing the `task-plan` never
    implies approval.
 
+<!-- change:task-plan-review -->
+
+6. **Request authorization after review.** Once
+   `sdlc/procedure/lifecycle/task/review-task` has approved the current
+   `task-plan`, present it to the human and ask them to authorize it — and, if
+   they want it scheduled, to set a `schedule` (a one-shot instant or a
+   recurring rule). Authorization is the human's call; the session never
+   authorizes on their behalf, and writing the `task-plan` never implies
+   approval.
+
+<!-- /planned-change:task-plan-review -->
+
 7. **Hand off to the runner.** Once the human authorizes, the task becomes a
    runner candidate: the lifecycle runner dispatches `sdlc/procedure/lifecycle/task/run-task` when the
    task is not held and its schedule or dependency gate is satisfied.
+
+<!-- planned:spike-todo-kind -->
+
+### Spike route
+
+A `kind=spike` todo is prepared here as well, as the pre-authorized task
+`sdlc/spec/todo-kind-spike` defines. Steps 0, 1, 3 and 5 apply as written; the
+others are replaced:
+
+- **Instead of Step 2 — reject what a spike cannot do.** If the todo asks for
+  a repository change outside the project's third-party documentation and
+  exploration home, do not draft a `task-plan`: record in the `log` what it asks
+  for and that the todo is misclassified, and stop. A question whose behavior
+  can only be observed on live data is still a spike: plan it as research
+  without that test, so the run records the behavior as unverified.
+- **Instead of Step 4 — draft the spike's plan.** The `task-plan` states the
+  question in the upstream party's terms and the party it concerns; the
+  decision and the todo waiting on the answer; that the run follows
+  `sdlc/procedure/research/third-party-research`; and that live tests use only
+  throwaway resources the run creates and removes, and commits touch only the
+  two documentation homes.
+- **Instead of Steps 6 and 7 — no authorization.** A spike is pre-authorized
+  as a class: request nothing from a human. Once the `task-plan` exists, the
+  lifecycle runner dispatches `sdlc/procedure/lifecycle/task/run-spike` when
+  the spike is not held.
+
+<!-- /planned:spike-todo-kind -->
 
 ## Outputs
 

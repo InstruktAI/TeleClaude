@@ -127,8 +127,10 @@ evidence and interpretation, kept distinguishable.
 
 ## Preconditions
 
-- **Human-invoked, human-ended.** The human starts a coordinator; no agent,
-  router, or schedule ever does. A finished coordinator does not end itself:
+- **Human-invoked, human-ended.** A coordinator exists only because the human
+  asked for one. The agent the human asks may carry that out by starting the
+  session that acquires the role; no agent, router, or schedule starts one on
+  its own initiative. A finished coordinator does not end itself:
   it rests idle with its findings as the last message, and its open session is
   the human's standing, scrollable list of signals. Only the human ends it.
   No automation watches, revives, replaces, or closes it.

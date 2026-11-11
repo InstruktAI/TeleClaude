@@ -44,7 +44,7 @@ from teleclaude.core.next_machine.review_rounds import (
     prepare_review_admission,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import ApprovalsManager, StateWriter
 from teleclaude.snippet_validation import snippet_body_digest_for
 
 if TYPE_CHECKING:
@@ -176,6 +176,22 @@ async def _derive_and_commit_drift(
     )
     await _commit_writer(writer, todos_db, slug, state)
     return drift_result
+
+
+async def _invalidate_substantive_drift(
+    *,
+    todos_db: WorkflowStore,
+    slug: str,
+    state: dict[str, StateValue],
+    drift: dict[str, ArtifactDriftStatus],
+) -> None:
+    """Re-apply the review invalidation for every artifact whose collapsed drift is substantive."""
+    writer = StateWriter(state)
+    approvals = ApprovalsManager(writer)
+    for artifact, status in sorted(drift.items()):
+        if status == DRIFT_SUBSTANTIVE:
+            approvals.cascade_substantive_drift(artifact)
+    await _commit_writer(writer, todos_db, slug, state)
 
 
 def _dispatch_post_block(*, slug: str, expected: str) -> str:
@@ -479,6 +495,7 @@ async def _prepare_dispatch(
         if drift_anomaly_blockers:
             return _drift_anomaly_halt_instruction(slug, drift_anomaly_blockers, drift)
         if _has_status(drift, DRIFT_SUBSTANTIVE):
+            await _invalidate_substantive_drift(todos_db=todos_db, slug=slug, state=state, drift=drift)
             return _drift_reprepare_instruction(slug, drift)
         if _has_status(drift, DRIFT_PENDING):
             artifact_write_timestamps = await read_artifact_write_timestamps(todos_db, slug)

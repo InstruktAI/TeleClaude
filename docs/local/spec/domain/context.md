@@ -32,12 +32,13 @@ replacement architecture is authoritative only in TeleClaudeNext.
   indexes, and context-selection results.
 
 - **Also owns:** the structural Blueprint supplied as agent context: extraction,
-  graph interpretation, shared-cache generation publication, and freshness-aware
-  consumption under `sdlc/spec/codebase-blueprint`. Workflow owns canonical-main
-  activation obligations and maintenance outcomes, consumed through its published
-  revision and maintenance-observation contracts. Configuration owns the action
-  binding declaration; neither coordination nor declaration transfers graph
-  policy out of context (`sdlc/policy/domain-ownership`).
+  graph interpretation, shared-cache generation publication, and
+  revision-reporting consumption under `sdlc/spec/codebase-blueprint`. Workflow
+  owns canonical-main and remote-main activation obligations, baseline
+  selection and maintenance outcomes, consumed through its published revision
+  and maintenance-observation contracts. Configuration owns the action binding
+  declaration; neither coordination nor declaration transfers graph policy out
+  of context (`sdlc/policy/domain-ownership`).
 
 - **Also owns:** the resolved read scope — which documentation tiers are
   assembled for a caller, how deeply each is read, and the authorization of the

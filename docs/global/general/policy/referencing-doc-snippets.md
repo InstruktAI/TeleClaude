@@ -59,6 +59,10 @@ visibility: 'public'
 - A citation never paraphrases the owner beyond its gist. When the citing text
   needs more of the rule than one clause carries, the reader needs the owner:
   make it a Required read, or narrow the citing text so one clause suffices.
+- A gist names what the rule requires where the citing text acts, in the
+  owner's own terms — never the owner's internal structure (a list, a section,
+  a heading). A gist that names structure breaks silently when the owner is
+  reorganised.
 
 ## Rationale
 
@@ -80,6 +84,9 @@ visibility: 'public'
 - A rule stated in two snippets is two rules to a reader: each wording is read
   as possibly distinct, and the copies drift until they contradict. The gist
   keeps the emphasis a repetition was reaching for; the id keeps one owner.
+- A citation is only reviewed when something touches it. Reviewing every
+  citation in a changed snippet, and every citer of a changed owner, catches
+  drift from both directions without opening review to unrelated content.
 - An authored global snippet resolves to its publisher source because that source is readable
   before a host has published anything. A generated artifact has no such source, so the same
   mapping substitutes a file nothing regenerates for the one the reference names. The substitute
@@ -100,9 +107,14 @@ visibility: 'public'
 - Soft references must appear in a `See also` section at the bottom and must not use `@`.
 - Reviewers treat a restated rule whose owner is another snippet as a finding and
   replace it with a citation.
-- Reviewers apply the reference rules to every changed reference, inline
-  citations included. Whether a backticked id in prose is a citation, an example, or a
-  placeholder is a reading judgment, so no scanner checks inline citations
+- A change to a snippet extends reference review to the whole of that snippet:
+  the reviewer checks every citation in it, touched or not, and fixes are
+  limited to the citations themselves — never the snippet's own content.
+- A change to what a snippet establishes extends reference review to the
+  snippets that cite it: its author finds them by its id, and the reviewer
+  checks that each citation still holds against the changed owner.
+- Whether a backticked id in prose is a citation, an example, or a placeholder
+  is a reading judgment, so no scanner checks inline citations
   (`general/principle/intelligence-boundaries`).
 
 ## Exceptions

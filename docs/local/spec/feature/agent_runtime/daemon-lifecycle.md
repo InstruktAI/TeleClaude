@@ -66,6 +66,8 @@ The producer and reader positions for both event source streams are prepared
 independently of adapter startup. Handler execution remains gated on its own
 dependencies, including request-surface binding where required.
 
+<!-- planned-change:cluster-redis-outage-store-and-forward -->
+
 A configured event Redis that does not answer never stops startup
 (`local/projects/teleclaude/policy/daemon-availability`). Before startup
 continues, the daemon records and logs which scope's Redis did not answer.
@@ -74,6 +76,20 @@ answer, and an unanswering Redis alone never makes it report the daemon as not
 serving; draining is reported as it is at any other time. What the event consumers on that Redis do while
 it is away and once it answers belongs to
 `local/projects/teleclaude/design/architecture/event-delivery`.
+
+<!-- change:cluster-redis-outage-store-and-forward -->
+
+A configured event Redis that does not answer never stops startup
+(`local/projects/teleclaude/policy/daemon-availability`). Before startup
+continues, the daemon records and logs which scope's Redis did not answer.
+While that lasts, the daemon's readiness answer names the Redis that does not
+answer and since when it has not answered, and an unanswering Redis alone never
+makes it report the daemon as not serving; draining is reported as it is at any
+other time. What the event consumers on that Redis do while it is away and once
+it answers belongs to
+`local/projects/teleclaude/design/architecture/event-delivery`.
+
+<!-- /planned-change:cluster-redis-outage-store-and-forward -->
 
 Before adapters, pollers or conversation delivery emit new output, startup
 reconciles durable input, transcript-binding, generation, peer-cursor and

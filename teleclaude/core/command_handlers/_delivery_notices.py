@@ -106,7 +106,7 @@ def _session_is_addressable(session: Session | None) -> bool:
     )
 
 
-async def _notify_caller_send_delivery_exhausted(row: InboundQueueRow) -> None:
+async def _notify_caller_send_delivery_exhausted(row: InboundQueueRow, cause: DeliveryTerminalCause) -> None:
     """Persist an exhaustion notice only for the original live local caller."""
     caller_session_id = row["caller_session_id"]
     target_session_id = row["session_id"]
@@ -141,7 +141,13 @@ async def _notify_caller_send_delivery_exhausted(row: InboundQueueRow) -> None:
         )
         return
 
-    notice_body = _CALLER_SEND_DELIVERY_FAILURE_NOTICE_TEMPLATE.format(target_session_id=target_session_id)
+    notice_template = (
+        "Delivery to session {target_session_id} failed after the input began to be placed, "
+        "so it may be in that agent's composer unsubmitted."
+        if cause is DeliveryTerminalCause.PLACEMENT_UNCERTAIN
+        else _CALLER_SEND_DELIVERY_FAILURE_NOTICE_TEMPLATE
+    )
+    notice_body = notice_template.format(target_session_id=target_session_id)
     try:
         control_payload_row_id = await handoff_control_payload(
             session_id=caller_session_id,
@@ -231,7 +237,7 @@ async def notify_delivery_exhausted(
             raise RuntimeError(_HOLD_NOTICE_NO_RECEIPT_ERROR)
         return
     if row["source_feature"] == InjectedTextSourceFeature.CALLER_SEND.value:
-        await _notify_caller_send_delivery_exhausted(row)
+        await _notify_caller_send_delivery_exhausted(row, cause)
         return
     if row["source_feature"] != InjectedTextSourceFeature.AGENT_RESTART.value:
         return

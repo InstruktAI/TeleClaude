@@ -341,8 +341,8 @@ than fabricating a route.
 
 For a valid substantive stamp:
 
-- X's review verdict is cleared (architecture-review or plan-review, as
-  applicable).
+- X's review verdict is cleared (prd-review, architecture-review or
+  plan-review, as applicable).
 - Every downstream artifact's review verdict is cleared (a substantive
   PRD drift invalidates architecture and plan; substantive architecture
   drift invalidates plan).
@@ -364,15 +364,15 @@ first review)" or "verdict cleared by reviewer needs_work (needs author
 fix inside the existing review loop)" is an explicit marker on the
 review state:
 
-- The verdict-state record (for `architecture_review` and `plan_review`)
-  gains a `cleared_by_substantive_drift` boolean (default `false`). The
-  marker is set in the same commit that clears the verdict due to a
-  substantive `--drift-reviewed` stamp.
+- The verdict-state record for `prd_review`, `architecture_review` and
+  `plan_review` carries a `cleared_by_substantive_drift` boolean (default
+  `false`). The marker is set in the same commit that clears the verdict
+  due to a substantive `--drift-reviewed` stamp.
 - The phase-derivation helpers for the feature and plan-only lanes
   consult the marker before treating an artifact-present + unapproved-verdict
   state as "ready for review." When the marker is `true`, derivation
   returns the corresponding `*_DRAFTING` phase. When `false`, derivation
-  returns `*_REVIEW` (existing behavior).
+  returns `*_REVIEW`.
 - The marker is cleared automatically when the artifact is rewritten
   (`telec todo artifacts write` — same boundary that re-captures
   provenance and clears drift-reviewed stamps for the artifact). After
