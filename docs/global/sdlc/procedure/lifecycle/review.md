@@ -113,16 +113,20 @@ For the tests lane, independently re-prove every triggered `TQ-*` predicate.
 Record evidence for each triggered predicate or a reasoned `N/A`. Evidence
 supplied by the author directs attention but never substitutes for review proof.
 
-**Reconcile, then assess the whole.** A lane's result is evidence you judge. A
-missing or unsupported lane result is re-run, not filled in by you. Route a
-contradiction or a dependency between lanes back to the lanes it concerns. A
-follow-up to a lane asks a narrower question, or puts a competing reading or
-counter-evidence to it as something to test; where the evidence already settles
-a point, record your own judgment instead of asking the lane to confirm it. Then
-make your own assessment of the whole target: coverage, that every changed file
-and every decision the target introduces appears in some lane's evidence; and
-fit, that the target as a whole serves the intent. A coverage hole goes back to
-a lane; a fit defect you can establish is your own finding under step 4.
+**Reconcile the lanes, then review the whole yourself.** A lane's result is
+evidence you judge. A missing or unsupported lane result is re-run, not filled
+in by you. Route a contradiction or a dependency between lanes back to the lanes
+it concerns. A follow-up to a lane asks a narrower question, or puts a competing
+reading or counter-evidence to it as something to test; where the evidence
+already settles a point, record your own judgment instead of asking the lane to
+confirm it. Then review the whole target yourself, from the context you hold.
+The lanes answer the questions the catalog names; you judge what the target does
+as one change: how its parts interact, whether its design holds together across
+files, what behavior emerges from several changes together, and whether it
+serves the intent. Every changed file and every decision the target introduces
+appears in your review or in a lane's evidence. A gap whose question one lane
+owns goes back to that lane; anything else you establish is your own finding
+under step 4.
 
 Each executed lane produces a findings section, even when it has no findings.
 A missing section means the review is incomplete: execute the missing lane
