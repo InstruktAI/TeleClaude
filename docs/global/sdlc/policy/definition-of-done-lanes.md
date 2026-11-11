@@ -322,7 +322,8 @@ This lane fires **always**, not only when test files changed. Read any changed o
 Apply the policy, not a per-function reflex:
 
 - **Coverage is the scenario inventory, not "every new function."** A coverage finding requires an **unbound feature-spec scenario this change delivers**. Absent such a scenario — platform-internal machinery, or a contract-defining / thin artifact (the artifact is its own spec) — there is nothing to bind, and "missing tests" is **not** a finding.
-- **Never request an agent-authored unit test where the applicable language testing policy forbids one.** If branchy internal logic genuinely warrants coverage, the finding is to **extract it to a scenario-bound functional test** — never "add a test here."
+- **Never request an agent-authored unit test where the applicable language testing policy forbids one.** If internal logic genuinely warrants coverage, route it as `sdlc/policy/testing` routes a test that seems missing: a fast test of that logic where the language policy and project ruling admit one, otherwise none. Never a new scenario, never a second test bound to an existing scenario.
+- **A scenario added or widened in a build range is a finding.** Scenarios are authored and frozen in preparation; a build pass that adds a use case or broadens one, including to justify a test, breaks the author/binder separation (`sdlc/policy/testing`, rule 2).
 - **Spec-delivered test specs:** every assertion from the spec-delivery commit must still exist; a removed or weakened assertion is a **Critical** finding (diff the spec-delivery commit against the final state).
 - **Weak tests are findings even when coverage exists.** Apply every weak-test anti-pattern the testing policy enumerates — the policy owns the full list; do not re-list it here.
 - **Browser / web UI changes** must include Playwright smoke evidence from build.

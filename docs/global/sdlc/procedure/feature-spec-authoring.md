@@ -103,7 +103,10 @@ of every context whose outcome its `Then` clauses assert —
 6. **Gate volume by falsifiability, not by count.** One admitted use case states one
    falsifiable behavioral rule with one facing and one trigger class. Data
    variations are examples or a scenario outline inside that use case, never
-   sibling use cases. Duplicate predicates collapse into one — across the
+   sibling use cases. Such a table documents data variations only, and the use
+   case's one test runs one representative row (`sdlc/policy/testing`, rule 8).
+   Rows whose outcomes differ are not data variations and are not written as a
+   table. Duplicate predicates collapse into one — across the
    corpus, not within one spec. Two scenarios whose `Then` clauses, read
    without actor and surface words, state one rule are one rule, and it lives
    in the owning context's spec; a different facing, entry point, transport, or
