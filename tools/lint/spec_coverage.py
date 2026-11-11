@@ -7,9 +7,9 @@ scenario inventory from the specs, collects the bindings from the tests, and
 reconciles the two — reporting orphan bindings (a test citing a scenario that
 does not exist), unbound scenarios (untested), anonymous scenarios (Gherkin with
 no stable id, not yet bindable), and multi-bound scenarios (more than one test).
-A scenario may carry several tests, each exercising a distinct behavior; whether
-the extra tests are behaviorally redundant is a reviewer judgment, so multi-bound
-scenarios are surfaced as review leads but never gated.
+A scenario is realized by exactly one test (sdlc/policy/testing, rule 8); a
+second test bound to it is a duplicate, whatever behavior it claims to add.
+Multi-bound scenarios are listed for review and never fail the check.
 
 Bookkeeping model (kept deliberately simple so the tool's job is easy):
   * one spec file == one spec id, derived from the path exactly as the doc index
@@ -220,9 +220,8 @@ def main() -> None:
     unbound = bindable_keys - bound_keys
     orphans = [b for b in report.bindings if (b.spec_id, b.scenario_id) not in bindable_keys]
 
-    # Multi-bound scenarios carry more than one test. Reported as review leads only —
-    # whether the extra tests exercise distinct behaviors or are redundant is a reviewer
-    # judgment (sdlc/policy/testing Rule 8), so this is never gated.
+    # Multi-bound scenarios carry more than one test, which breaks the one-test-per-scenario
+    # rule (sdlc/policy/testing, rule 8). They are listed for review and never gated.
     seen: dict[tuple[str, str], int] = {}
     for b in report.bindings:
         seen[(b.spec_id, b.scenario_id)] = seen.get((b.spec_id, b.scenario_id), 0) + 1
@@ -238,7 +237,7 @@ def main() -> None:
     print("-" * 60)
     print(f"  bound                   : {len(bound)}")
     print(f"  unbound (backlog)       : {len(unbound)}")
-    print(f"  multi-bound scenarios   : {len(multi_bound)}  (review for redundancy; not gated)")
+    print(f"  multi-bound scenarios   : {len(multi_bound)}  (duplicates; reviewed, not gated)")
     print(f"  orphan bindings         : {len(orphans)}  (ratcheted)")
     print("=" * 60)
 
@@ -248,7 +247,7 @@ def main() -> None:
         for spec_id, sid in sorted(unbound):
             print(f"UNBOUND: {spec_id} :: {sid}")
         for (spec_id, sid), n in sorted(multi_bound.items()):
-            print(f"MULTI-BOUND: {spec_id} :: {sid} — {n} tests (review behavioral distinctness)")
+            print(f"MULTI-BOUND: {spec_id} :: {sid} — {n} tests (duplicate binding: keep one test)")
 
     counts = {"orphans": len(orphans), "anonymous": len(report.anonymous)}
 
