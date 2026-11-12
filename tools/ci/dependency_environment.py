@@ -22,7 +22,6 @@ from instrukt_ai_logging import get_logger
 from tools.ci.bounded_process import ProcessExecution, run_bounded_process
 
 LOG_APP_NAME = "teleclaude_runtime_acceptance"
-_LOGGER_SUFFIX = "dependency_environment"
 _EMPTY = ""
 _UTF8 = "utf-8"
 _UNKNOWN_REVISION = "unknown"
@@ -70,22 +69,18 @@ _DOWNLOAD_CACHE_CEILING_BYTES = 2 * 1024**3
 _ENVIRONMENT_INVALID = "The dependency-only environment generation is incomplete: {path}"
 _ENVIRONMENT_SYNC_FAILED = "Could not prepare the locked dependency-only environment: {detail}"
 _ENVIRONMENT_INPUT_MISSING = "The dependency environment input is missing: {path}"
-_SYNC_EVIDENCE_LABEL = "uv output (end): "
 _SYNC_EVIDENCE_TAIL_LIMIT = 3072
 _SOURCE_TREE_PLACEHOLDER = "<source-tree>"
-_ACCOUNT_HOME_PLACEHOLDER = "<account-home>"
 _STORE_REFUSED = "The dependency environment store is a link, is not a directory, or belongs to another user."
 _CACHE_VARIABLE = "XDG_CACHE_HOME"
-_DEFAULT_CACHE_DIRECTORY = ".cache"
 _STORE_MODE = 0o700
 _PROCESS_FAILURE_DETAIL = "The command failed with exit status {exit_status}."
-_DETAIL_SEPARATOR = " "
 DEPENDENCY_ENVIRONMENT_PLACEHOLDER = "<dependency-environment>"
 PROJECT_ENVIRONMENT_VARIABLE = "UV_PROJECT_ENVIRONMENT"
 PYTHON_ENVIRONMENT_EXECUTABLE = Path("bin") / _PYTHON_EXECUTABLE
 
 
-logger = get_logger(f"{LOG_APP_NAME}.{_LOGGER_SUFFIX}")
+logger = get_logger(f"{LOG_APP_NAME}.dependency_environment")
 
 
 def _environment_cache_key(source_root: Path) -> str:
@@ -118,7 +113,7 @@ def _cache_home() -> Path:
     configured = os.environ.get(_CACHE_VARIABLE, _EMPTY)
     if configured and Path(configured).is_absolute():
         return Path(configured)
-    return Path(pwd.getpwuid(os.getuid()).pw_dir) / _DEFAULT_CACHE_DIRECTORY
+    return Path(pwd.getpwuid(os.getuid()).pw_dir) / ".cache"
 
 
 def _environment_cache_root() -> Path:
@@ -254,16 +249,16 @@ def _sync_failure_detail(sync_result: ProcessExecution, store_root: Path, source
     output = sync_result.stderr.strip() or sync_result.stdout.strip()
     if output:
         parts.append(
-            _SYNC_EVIDENCE_LABEL + _sanitize_evidence(output[-_SYNC_EVIDENCE_TAIL_LIMIT:], store_root, source_root)
+            "uv output (end): " + _sanitize_evidence(output[-_SYNC_EVIDENCE_TAIL_LIMIT:], store_root, source_root)
         )
-    return _DETAIL_SEPARATOR.join(parts)
+    return " ".join(parts)
 
 
 def _sanitize_evidence(text: str, store_root: Path, source_root: Path) -> str:
     """Replace the source tree, the store and the account home, longest first, with their placeholders."""
     text = text.replace(str(source_root), _SOURCE_TREE_PLACEHOLDER)
     text = text.replace(str(store_root), DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
-    return text.replace(pwd.getpwuid(os.getuid()).pw_dir, _ACCOUNT_HOME_PLACEHOLDER)
+    return text.replace(pwd.getpwuid(os.getuid()).pw_dir, "<account-home>")
 
 
 def _rename_aside(store_root: Path, entry: Path) -> Path:
