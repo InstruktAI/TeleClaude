@@ -68,10 +68,13 @@ only entries inside the store's own directory and follows no link, and a store
 directory that is itself a link or belongs to another user fails the run rather
 than being used. A rebuild whose synchronization fails fails the scenario with
 the synchronization's exit status and bounded output. A run never retires a
-generation another run is building or has just used. A generation no run has
+generation while another run is building or using it. A generation no run has
 used within the retention window the controller declares is retired, so the
 store holds the generations in recent use
-(`general/policy/shared-machine-resources`).
+(`general/policy/shared-machine-resources`). The store's download cache is
+bounded by the size ceiling the controller declares: a run that has built a
+generation and finds the download cache above that ceiling clears it, and
+later synchronizations download again what they need.
 
 <!-- /planned:acceptance-env-cache-recovers -->
 
@@ -183,7 +186,7 @@ And success leaves the full installation proof required
   interpreter, not every installed file. A generation damaged without losing
   those still validates, and the damage surfaces as a failing scenario until
   that generation is removed.
-- The store's download cache keeps every package version the dependency inputs
-  have pulled in. The harness retires generations, not download cache entries.
+- The download cache can exceed its ceiling by what one synchronization adds,
+  and clearing it is skipped while a synchronization is using it.
 
 <!-- /planned:acceptance-env-cache-recovers -->
