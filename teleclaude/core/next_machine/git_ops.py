@@ -779,6 +779,8 @@ class WorktreeMergeOutcome(StrEnum):
     DEFERRED_FINALIZE_CLAIM = "deferred_finalize_claim"
     FETCH_UNAVAILABLE = "fetch_unavailable"
     CONFLICT = "conflict"
+    REFUSED = "refused"
+    UNESTABLISHED = "unestablished"
 
 
 @dataclass(frozen=True)
@@ -833,17 +835,42 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> WorktreeMe
             env=no_autostash_env(),
         )
     except GitCommandError as exc:
-        # Abort the failed merge so the worktree stays clean
+        # Git exits 1 for a conflicted merge and for a hook-refused merge alike; the unmerged index
+        # entries a conflict leaves are what tell them apart, and the abort clears them, so read first.
+        details = (exc.stderr or "").strip()
+        conflicted = False
+        unreadable_reason: str | None = None
+        try:
+            conflicted = bool(repo.git.ls_files("--unmerged").strip())
+        except (GitCommandError, OSError) as read_exc:
+            unreadable_reason = str(read_exc).strip() or type(read_exc).__name__
+        # Abort the failed merge so the worktree stays clean for every outcome.
         try:
             repo.git.merge("--abort")
         except GitCommandError:
             pass
         head_after = get_head_commit(worktree_cwd)
+        if unreadable_reason is not None:
+            return WorktreeMergeResult(
+                WorktreeMergeOutcome.UNESTABLISHED,
+                head_before,
+                head_after,
+                f"Merge origin/main into worktree {slug} failed and was aborted. "
+                f"Whether it conflicted could not be read ({unreadable_reason}).\n{details}",
+            )
+        if not conflicted:
+            return WorktreeMergeResult(
+                WorktreeMergeOutcome.REFUSED,
+                head_before,
+                head_after,
+                f"Merge origin/main into worktree {slug} was refused without conflicts. "
+                f"The merge was aborted.\n{details}",
+            )
         return WorktreeMergeResult(
             WorktreeMergeOutcome.CONFLICT,
             head_before,
             head_after,
-            _WORKTREE_MERGE_FAILURE_TEMPLATE.format(slug=slug, details=(exc.stderr or "").strip()),
+            _WORKTREE_MERGE_FAILURE_TEMPLATE.format(slug=slug, details=details),
         )
 
     logger.info(_ORIGIN_MAIN_MERGED_LOG_TEMPLATE, slug)
