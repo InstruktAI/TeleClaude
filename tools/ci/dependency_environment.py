@@ -106,7 +106,7 @@ def _environment_cache_key(source_root: Path) -> str:
 
 
 def _cache_home() -> Path:
-    """Return the user's cache directory: an absolute XDG_CACHE_HOME, else the account home's .cache.
+    """Return the user's cache directory: an absolute XDG_CACHE_HOME, else the default beneath the account home.
 
     The account home comes from the user database, not HOME, because the commit gate starts
     the controller without HOME and worktree tooling may redirect it.
