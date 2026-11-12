@@ -27,6 +27,7 @@ _COMMAND_TIMEOUT_SECONDS = 480
 _PATH_VARIABLE = "PATH"
 _LANG_VARIABLE = "LANG"
 _TMP_VARIABLE = "TMPDIR"
+_CACHE_HOME_VARIABLE = "XDG_CACHE_HOME"
 _PYTHONPATH_VARIABLE = "PYTHONPATH"
 _PYTHONDONTWRITEBYTECODE_VARIABLE = "PYTHONDONTWRITEBYTECODE"
 _PYTHONNOUSERSITE_VARIABLE = "PYTHONNOUSERSITE"
@@ -121,4 +122,8 @@ def _controller_environment(source_root: Path) -> dict[str, str]:
         _GIT_CONFIG_SYSTEM_VARIABLE: os.devnull,
         _GIT_CONFIG_NOSYSTEM_VARIABLE: _TRUE_TEXT,
     }
+    # The controller places its dependency store in the user's cache home; a relocated home must reach it.
+    cache_home = host_environment.get(_CACHE_HOME_VARIABLE)
+    if cache_home:
+        child_environment[_CACHE_HOME_VARIABLE] = cache_home
     return child_environment

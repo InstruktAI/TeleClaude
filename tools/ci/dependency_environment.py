@@ -7,9 +7,9 @@ import hashlib
 import json
 import os
 import platform
+import pwd
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 from tools.ci.bounded_process import run_bounded_process
@@ -52,6 +52,10 @@ _SYNTHETIC_TEMP_DIRECTORY = "tmp"
 _ENVIRONMENT_INVALID = "The dependency-only environment generation is incomplete: {path}"
 _ENVIRONMENT_SYNC_FAILED = "Could not prepare the locked dependency-only environment: {detail}"
 _ENVIRONMENT_INPUT_MISSING = "The dependency environment input is missing: {path}"
+_STORE_REFUSED = "The dependency environment store is a link, is not a directory, or belongs to another user."
+_CACHE_VARIABLE = "XDG_CACHE_HOME"
+_DEFAULT_CACHE_DIRECTORY = ".cache"
+_STORE_MODE = 0o700
 _PROCESS_FAILURE_DETAIL = "The command failed with exit status {exit_status}."
 PROJECT_ENVIRONMENT_VARIABLE = "UV_PROJECT_ENVIRONMENT"
 PYTHON_ENVIRONMENT_EXECUTABLE = Path("bin") / _PYTHON_EXECUTABLE
@@ -78,18 +82,45 @@ def _environment_cache_key(source_root: Path) -> str:
     return digest.hexdigest()
 
 
+def _cache_home() -> Path:
+    """Return the user's cache directory: an absolute XDG_CACHE_HOME, else the account home's .cache.
+
+    The account home comes from the user database, not HOME, because the commit gate starts
+    the controller without HOME and worktree tooling may redirect it.
+    """
+    configured = os.environ.get(_CACHE_VARIABLE, _EMPTY)
+    if configured and Path(configured).is_absolute():
+        return Path(configured)
+    return Path(pwd.getpwuid(os.getuid()).pw_dir) / _DEFAULT_CACHE_DIRECTORY
+
+
 def _environment_cache_root() -> Path:
-    """Return the caller-owned, machine-local cache root for immutable environments."""
-    cache_name = f"{_STORE_DIRECTORY}-{os.getuid()}"
-    return Path(tempfile.gettempdir()) / cache_name
+    """Return the per-user store directory, created private and refused when it is not ours."""
+    cache_home = _cache_home()
+    cache_home.mkdir(parents=True, exist_ok=True)
+    store_root = cache_home / _STORE_DIRECTORY
+    try:
+        store_root.mkdir(mode=_STORE_MODE)
+    except FileExistsError:
+        pass
+    # Open without following a link so ownership and permissions are read from, and set on, the directory itself.
+    try:
+        descriptor = os.open(store_root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise RuntimeError(_STORE_REFUSED) from exc
+    try:
+        if os.fstat(descriptor).st_uid != os.getuid():
+            raise RuntimeError(_STORE_REFUSED)
+        os.fchmod(descriptor, _STORE_MODE)
+    finally:
+        os.close(descriptor)
+    return store_root
 
 
 def ensure_dependency_environment(source_root: Path) -> Path:
     """Prepare or reuse a locked environment that contains dependencies but no app install."""
     resolved_root = source_root.expanduser().resolve()
     cache_root = _environment_cache_root()
-    cache_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    cache_root.chmod(0o700)
     generation = _environment_cache_key(resolved_root)
     environment_path = cache_root / generation
     lock_path = cache_root / f"{generation}{_ENVIRONMENT_LOCK_SUFFIX}"
