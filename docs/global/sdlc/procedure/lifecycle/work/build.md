@@ -219,17 +219,19 @@ Ready for review.
   this procedure is the recovery contract — no orchestrator guidance accompanies it:
   - **`MERGE_MAIN_FAILED`** (the machine's pre-dispatch/pre-review merge of
     `origin/main` into your worktree failed and was aborted). The message says
-    whether the merge conflicted or was refused, and carries git's output.
-    Accepted `origin/main` is the leading baseline either way.
+    whether the merge conflicted, was refused, or failed with its kind
+    unestablished, and carries git's output. Accepted `origin/main` is the leading
+    baseline in every case.
     - **Conflicted:** reapply the todo's prepared intent on top of `origin/main`,
       resolve the conflicts in your worktree, rerun the quality gates, and emit the
       correct lifecycle stamp/report for your phase.
-    - **Refused without conflicts** — the commit gate refused the merge commit, or
-      git would not overwrite a local file: there is nothing to resolve. Merge
-      `origin/main` again in your worktree and read what refuses it. A cause in this
-      todo's work is yours to fix; leave a cause outside it intact and report it as
-      your blocker. Once the merge commits, emit the correct lifecycle stamp/report
-      for your phase.
+    - **Refused, or kind unestablished** — for example the commit gate refused the
+      merge commit, or git would not overwrite a local file: no conflict is known.
+      Merge `origin/main` again in your worktree and recover by what that merge
+      shows. Conflicts take the Conflicted recovery above. For a refusal, a cause in
+      this todo's work is yours to fix; leave a cause outside it intact and report
+      it as your blocker. Once the merge commits, emit the correct lifecycle
+      stamp/report for your phase.
   - **Failed lint/test gates, a dirty worktree, a missing stamp, or stale branch
     publication**: you mutate the worktree and re-emit; the orchestrator never edits
     code or tests.
