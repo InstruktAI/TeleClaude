@@ -8,8 +8,10 @@ import json
 import os
 import platform
 import pwd
+import re
 import shutil
 import sys
+import time
 import uuid
 from pathlib import Path
 from types import TracebackType
@@ -52,6 +54,15 @@ _DEFAULT_LANGUAGE = "C.UTF-8"
 _SYNTHETIC_HOME_DIRECTORY = "home"
 _SYNTHETIC_CACHE_DIRECTORY = "cache"
 _SYNTHETIC_TEMP_DIRECTORY = "tmp"
+_RETIRED_MARKER = ".retired-"
+_CACHE_LOCK_FILENAME = "cache.lock"
+_GENERATION_NAME = re.compile(r"[0-9a-f]{64}")
+_RETIRED_NAME = re.compile(
+    rf"(?:[0-9a-f]{{64}}|{_SYNTHETIC_CACHE_DIRECTORY}){re.escape(_RETIRED_MARKER)}[0-9a-f]{{32}}"
+)
+_SECONDS_PER_DAY = 24 * 60 * 60
+_GENERATION_RETENTION_SECONDS = 14 * _SECONDS_PER_DAY
+_DOWNLOAD_CACHE_CEILING_BYTES = 2 * 1024**3
 _ENVIRONMENT_INVALID = "The dependency-only environment generation is incomplete: {path}"
 _ENVIRONMENT_SYNC_FAILED = "Could not prepare the locked dependency-only environment: {detail}"
 _ENVIRONMENT_INPUT_MISSING = "The dependency environment input is missing: {path}"
@@ -59,7 +70,6 @@ _SYNC_EVIDENCE_LABEL = "uv output (end): "
 _SYNC_EVIDENCE_TAIL_LIMIT = 3072
 _SOURCE_TREE_PLACEHOLDER = "<source-tree>"
 _ACCOUNT_HOME_PLACEHOLDER = "<account-home>"
-_RETIRED_MARKER = ".retired-"
 _STORE_REFUSED = "The dependency environment store is a link, is not a directory, or belongs to another user."
 _CACHE_VARIABLE = "XDG_CACHE_HOME"
 _DEFAULT_CACHE_DIRECTORY = ".cache"
@@ -167,13 +177,16 @@ def ensure_dependency_environment(source_root: Path) -> EnvironmentLease:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
         if _generation_defect(environment_path, generation) is None:
             _stamp_last_use(environment_path)
+            _bound_store(store_root, generation, built=False)
             return EnvironmentLease(environment_path, lock_file)
         # Conversion is not atomic: another run may finish or retire the generation in the gap, so the
         # exclusive holder looks again before it builds.
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        if _generation_defect(environment_path, generation) is not None:
+        built = _generation_defect(environment_path, generation) is not None
+        if built:
             _rebuild_generation(store_root, resolved_root, generation)
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+        _bound_store(store_root, generation, built=built)
         return EnvironmentLease(environment_path, lock_file)
     except BaseException:
         lock_file.close()
@@ -186,19 +199,22 @@ def _rebuild_generation(store_root: Path, source_root: Path, generation: str) ->
     if os.path.lexists(environment_path):
         # A link, a thinned directory or a mismatched manifest is purge or kill damage, not state worth keeping.
         _retire_entry(store_root, environment_path)
-    environment = _dependency_sync_environment(store_root, environment_path)
-    sync_result = run_bounded_process(
-        (
-            *_UV_SYNC_ARGUMENTS,
-            str(source_root),
-            _UV_LOCKED_OPTION,
-            _UV_NO_INSTALL_PROJECT_OPTION,
-            _UV_NO_DEFAULT_GROUPS_OPTION,
-        ),
-        cwd=source_root,
-        environment=environment,
-        timeout_seconds=_UV_SYNC_TIMEOUT_SECONDS,
-    )
+    # A sync holds the download-cache lock shared, so clearing the cache never runs under it.
+    with (store_root / _CACHE_LOCK_FILENAME).open("a+b") as cache_lock:
+        fcntl.flock(cache_lock.fileno(), fcntl.LOCK_SH)
+        environment = _dependency_sync_environment(store_root, environment_path)
+        sync_result = run_bounded_process(
+            (
+                *_UV_SYNC_ARGUMENTS,
+                str(source_root),
+                _UV_LOCKED_OPTION,
+                _UV_NO_INSTALL_PROJECT_OPTION,
+                _UV_NO_DEFAULT_GROUPS_OPTION,
+            ),
+            cwd=source_root,
+            environment=environment,
+            timeout_seconds=_UV_SYNC_TIMEOUT_SECONDS,
+        )
     if sync_result.exit_status != 0 or sync_result.diagnostics:
         failure = RuntimeError(
             _ENVIRONMENT_SYNC_FAILED.format(detail=_sync_failure_detail(sync_result, store_root, source_root))
@@ -239,15 +255,22 @@ def _sanitize_evidence(text: str, store_root: Path, source_root: Path) -> str:
     return text.replace(pwd.getpwuid(os.getuid()).pw_dir, _ACCOUNT_HOME_PLACEHOLDER)
 
 
-def _retire_entry(store_root: Path, entry: Path) -> None:
-    """Rename a store entry aside atomically, which frees its path, then remove what was renamed.
+def _rename_aside(store_root: Path, entry: Path) -> Path:
+    """Rename a store entry to a unique retired name inside the store; the rename frees its path atomically.
 
-    The rename follows no link: a symlink is renamed and unlinked as a link and its target is untouched.
-    A failed removal leaves the renamed entry for a later retention pass and does not fail the caller.
+    The rename follows no link: a symlink is renamed as a link and its target is untouched.
     """
     retired = store_root / f"{entry.name}{_RETIRED_MARKER}{uuid.uuid4().hex}"
     os.rename(entry, retired)
-    _remove_retired_entry(retired)
+    return retired
+
+
+def _retire_entry(store_root: Path, entry: Path) -> None:
+    """Rename a store entry aside, then remove what was renamed.
+
+    A failed removal leaves the renamed entry for a later retention pass and does not fail the caller.
+    """
+    _remove_retired_entry(_rename_aside(store_root, entry))
 
 
 def _remove_retired_entry(retired: Path) -> None:
@@ -311,3 +334,100 @@ def _generation_defect(environment_path: Path, generation: str) -> str | None:
     if manifest != {_MANIFEST_KEY_FIELD: generation, _MANIFEST_GROUPS_FIELD: _ENVIRONMENT_GROUPS}:
         return "manifest mismatch"
     return None
+
+
+def _bound_store(store_root: Path, current_generation: str, *, built: bool) -> None:
+    """Keep the store to the generations in recent use and a download cache under its ceiling.
+
+    Housekeeping never fails the run: an entry it cannot remove stays for the next pass, and it
+    only ever tries other generations' locks without waiting.
+    """
+    try:
+        names = [entry.name for entry in os.scandir(store_root)]
+    except OSError:
+        return
+    for name in names:
+        if _RETIRED_NAME.fullmatch(name):
+            _remove_retired_entry(store_root / name)
+        elif _GENERATION_NAME.fullmatch(name) and name != current_generation:
+            _retire_unused_generation(store_root, name)
+    if built:
+        _clear_oversized_download_cache(store_root)
+
+
+def _last_use(entry: Path) -> float:
+    """Return when a generation was last used: its manifest stamp, else the entry's own modification time."""
+    try:
+        return os.stat(entry / _ENVIRONMENT_MANIFEST_FILENAME).st_mtime
+    except OSError:
+        return os.lstat(entry).st_mtime
+
+
+def _try_lock_exclusive(lock_path: Path) -> IO[bytes] | None:
+    """Take a lock exclusively without waiting; None when another run holds it in any mode."""
+    lock_file = lock_path.open("a+b")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_file.close()
+        return None
+    except BaseException:
+        lock_file.close()
+        raise
+    return lock_file
+
+
+def _is_stale(entry: Path) -> bool:
+    return time.time() - _last_use(entry) > _GENERATION_RETENTION_SECONDS
+
+
+def _retire_unused_generation(store_root: Path, name: str) -> None:
+    """Retire one generation no run has used within the retention window and no run holds now."""
+    entry = store_root / name
+    try:
+        if not _is_stale(entry):
+            return
+        lock_file = _try_lock_exclusive(store_root / f"{name}{_ENVIRONMENT_LOCK_SUFFIX}")
+        if lock_file is None:
+            return
+        with lock_file:
+            # A run that took the lock between the first look and now has refreshed the stamp.
+            if _is_stale(entry):
+                _retire_entry(store_root, entry)
+    except OSError:
+        return
+
+
+def _tree_size_bytes(root: Path) -> int:
+    """Sum the apparent size of every file under a directory, following no link."""
+    total = 0
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(Path(entry.path))
+                    else:
+                        total += entry.stat(follow_symlinks=False).st_size
+        except FileNotFoundError:
+            continue
+    return total
+
+
+def _clear_oversized_download_cache(store_root: Path) -> None:
+    """Clear the download cache when a build left it above the ceiling and no sync is using it."""
+    cache_path = store_root / _SYNTHETIC_CACHE_DIRECTORY
+    try:
+        if not cache_path.is_dir() or _tree_size_bytes(cache_path) <= _DOWNLOAD_CACHE_CEILING_BYTES:
+            return
+        lock_file = _try_lock_exclusive(store_root / _CACHE_LOCK_FILENAME)
+        if lock_file is None:
+            return
+        with lock_file:
+            # Held only for the rename: a sync never sees a partly deleted cache.
+            retired = _rename_aside(store_root, cache_path)
+        _remove_retired_entry(retired)
+    except OSError:
+        return
