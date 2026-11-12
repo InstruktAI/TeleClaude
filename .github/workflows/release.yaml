@@ -675,7 +675,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test "$(git rev-parse 'HEAD^{tree}')" = "$CANDIDATE_TREE_SHA"
           set +e
-          uv run --no-project --python 3.12 python -P tools/ci/runtime_acceptance.py \
+          uv run --no-project --python 3.12 --with instruktai-python-logger==0.6.7 python -P tools/ci/runtime_acceptance.py \
             --profile full \
             --root "$GITHUB_WORKSPACE" \
             --source-revision "$CANDIDATE_SHA" \

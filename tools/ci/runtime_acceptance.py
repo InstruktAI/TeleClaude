@@ -3,30 +3,43 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
-import hashlib
 import http.client
 import json
 import math
 import os
-import platform
 import re
 import shutil
 import signal
 import socket
-import subprocess
 import sys
 import tempfile
 import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import FrameType
 from typing import cast
 
+from instrukt_ai_logging import configure_logging
+
+from tools.ci.bounded_process import (
+    DEFAULT_OUTPUT_LIMIT_BYTES,
+    PROCESS_TIMEOUT_DETAIL,
+    ProcessExecution,
+    run_bounded_process,
+)
+from tools.ci.dependency_environment import (
+    DEPENDENCY_ENVIRONMENT_PLACEHOLDER,
+    LOG_APP_NAME,
+    PROJECT_ENVIRONMENT_VARIABLE,
+    PYTHON_ENVIRONMENT_EXECUTABLE,
+    SOURCE_TREE_PLACEHOLDER,
+    EnvironmentLease,
+    ensure_dependency_environment,
+)
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
 
 _UTF8 = "utf-8"
@@ -34,21 +47,9 @@ _REPORT_SCHEMA_VERSION = 1
 _DEFAULT_ROOT = "."
 _REPORT_TEMP_SUFFIX = ".tmp"
 _LINE_BREAK = "\n"
-_ENVIRONMENT_CACHE_DIRECTORY = "teleclaude-runtime-acceptance"
-_ENVIRONMENT_LOCK_SUFFIX = ".lock"
-_ENVIRONMENT_MANIFESTS = ("pyproject.toml", "uv.lock", ".python-version")
-_ENVIRONMENT_REQUIRED_MANIFESTS = ("pyproject.toml", "uv.lock")
-_ENVIRONMENT_GROUPS = "runtime-only"
-_UV_EXECUTABLE = "uv"
-_UV_SYNC_COMMAND = "sync"
-_UV_PROJECT_OPTION = "--project"
-_UV_LOCKED_OPTION = "--locked"
-_UV_NO_INSTALL_PROJECT_OPTION = "--no-install-project"
-_UV_NO_DEFAULT_GROUPS_OPTION = "--no-default-groups"
-_ENVIRONMENT_VARIABLE = "UV_PROJECT_ENVIRONMENT"
+_TEMPORARY_ROOT_PREFIX = "teleclaude-runtime-acceptance"
 _ENVIRONMENT_ASSIGNMENT = "{name}={value}"
 _UV_NO_SYNC_VARIABLE = "UV_NO_SYNC"
-_UV_CACHE_VARIABLE = "UV_CACHE_DIR"
 _COLD_HOME_VARIABLE = "HOME"
 _TELECLAUDE_HOME_VARIABLE = "TELECLAUDE_HOME"
 _PYTHON_PATH_VARIABLE = "PYTHONPATH"
@@ -74,10 +75,8 @@ _CLI_VERSION_ARGUMENTS = ("version",)
 _PACKAGE_IMPORT_ISOLATED_OPTION = "-P"
 _PACKAGE_IMPORT_SCRIPT = Path("tools") / "ci" / "import_package_modules.py"
 _MODULE_HELP_ARGUMENTS = ("-P", "-m", _OWNER_ESTABLISHMENT_MODULE, "--help")
-_UV_SYNC_TIMEOUT_SECONDS = 900
 _COMMAND_TIMEOUT_SECONDS = 30
 _PACKAGE_IMPORT_TIMEOUT_SECONDS = 45
-_PROCESS_TERMINATION_GRACE_SECONDS = 1
 _SYNTHETIC_COMPUTER_NAME = "runtime-acceptance"
 _SYNTHETIC_COMPUTER_USER = "runtime-acceptance"
 _SYNTHETIC_COMPUTER_HOST = "runtime-acceptance.invalid"
@@ -85,10 +84,6 @@ _SYNTHETIC_AGENT = "claude"
 _SYNTHETIC_RELEASE_CHANNEL = "alpha"
 _PYTHON_EXECUTABLE = "python"
 _UTF8_REPLACEMENT = "replace"
-_ENVIRONMENT_INVALID = "The dependency-only environment generation is incomplete: {path}"
-_ENVIRONMENT_SYNC_FAILED = "Could not prepare the locked dependency-only environment: {detail}"
-_ENVIRONMENT_INPUT_MISSING = "The dependency environment input is missing: {path}"
-_PROCESS_LAUNCH_FAILED = "The required process could not be started."
 _SCENARIO_COLD = "UC-RA1"
 _SCENARIO_RUNTIME_READY = "UC-RA2"
 _SCENARIO_OWNER_IDENTITY = "UC-RA3"
@@ -108,7 +103,6 @@ _FULL_PROFILE_SCENARIOS = (
 )
 _PROFILE_COLD = "cold"
 _PROFILE_FULL = "full"
-_UNKNOWN_REVISION = "unknown"
 _EMPTY = ""
 _DIAGNOSTIC_LIMIT = 4096
 _INSTALLER_LOG_PATH = Path("install.log")
@@ -137,17 +131,10 @@ _SYNTHETIC_CACHE_DIRECTORY = "cache"
 _SYNTHETIC_CONFIG_DIRECTORY = "config"
 _SYNTHETIC_DATA_DIRECTORY = "data"
 _SYNTHETIC_TEMP_DIRECTORY = "tmp"
-_ENVIRONMENT_MANIFEST_FILENAME = "environment.json"
-_OUTPUT_LIMIT = 65536
 _PROCESS_SUCCESS = 0
-_PROCESS_FAILURE = 1
-_PROCESS_LAUNCH_EXIT_CODE = 127
 _REPORT_NAME_TEMPLATE = "runtime-acceptance-{identifier}.json"
-_VENV_CONFIG_FILENAME = "pyvenv.cfg"
 _PATH_SEPARATOR = os.pathsep
 _SCENARIO_PUBLIC_RESULT = "The public command did not return a non-empty successful result."
-_SOURCE_TREE_PLACEHOLDER = "<source-tree>"
-_DEPENDENCY_ENVIRONMENT_PLACEHOLDER = "<dependency-environment>"
 _SYNTHETIC_RUNTIME_PLACEHOLDER = "<synthetic-runtime>"
 _RUNTIME_HOME_PLACEHOLDER = "<runtime-home>"
 _ADMIN_ROLE = "admin"
@@ -186,9 +173,6 @@ _SYNTHETIC_PATH_ENVIRONMENT_VARIABLES = (
 )
 _DEFAULT_LANGUAGE = "C.UTF-8"
 _UV_NO_SYNC_VALUE = "1"
-_PROCESS_FAILURE_DETAIL = "The command failed with exit status {exit_status}."
-_PROCESS_TIMEOUT_DETAIL = "The command exceeded its deadline."
-_PROCESS_OUTPUT_LIMIT_DETAIL = "The command exceeded the output limit."
 _BASH_EXECUTABLE = "/bin/bash"
 _ENV_EXECUTABLE = "env"
 _BASH_NO_PROFILE_OPTION = "--noprofile"
@@ -280,9 +264,6 @@ _FULL_NO_OUTPUT_ERROR = "A required public command returned no result."
 _FULL_STATE_CHANGED = "A refused operation changed the persisted machine configuration."
 _FULL_BAD_REVISION = "A public configuration read did not return its opaque revision."
 _FULL_CONFIG_SHAPE_INVALID = "A public configuration read returned an invalid structure."
-_JSON_SEPARATORS = (",", ":")
-_MANIFEST_KEY_FIELD = "key"
-_MANIFEST_GROUPS_FIELD = "groups"
 _CONFIG_COMPUTER_FIELD = "computer"
 _CONFIG_AGENTS_FIELD = "agents"
 _CONFIG_DEFAULT_FIELD = "default"
@@ -300,12 +281,6 @@ _COMPUTER_INGRESS_FIELD = "is_ingress_node"
 _AGENT_ENABLED_FIELD = "enabled"
 _COMPUTER_ROLE_DEFAULT = "general"
 _TRUE_TEXT = "1"
-_UV_SYNC_ARGUMENTS = (
-    _UV_EXECUTABLE,
-    _UV_SYNC_COMMAND,
-    _UV_PROJECT_OPTION,
-)
-_PYTHON_ENVIRONMENT_EXECUTABLE = Path("bin") / _PYTHON_EXECUTABLE
 
 
 class Profile(StrEnum):
@@ -510,17 +485,6 @@ def execute_profile(
     )
 
 
-@dataclass(frozen=True)
-class ProcessExecution:
-    """Bounded output and lifecycle result from one child process group."""
-
-    exit_status: int
-    stdout: str
-    stderr: str
-    duration_seconds: float
-    diagnostics: str = _EMPTY
-
-
 @dataclass
 class FullRuntimeResources:
     """Resources and reversible setup state owned by one disposable full profile."""
@@ -531,6 +495,7 @@ class FullRuntimeResources:
     source_revision: str
     source_tree: str
     dependency_environment: Path | None = None
+    leases: list[EnvironmentLease] = field(default_factory=list)
     admin_terminal: PersistentTerminal | None = None
     install_attempted: bool = False
     start_attempted: bool = False
@@ -553,195 +518,13 @@ class FullRuntimeResources:
     def sanitize(self, text: str) -> str:
         """Remove source, home and disposable paths from retained command evidence."""
         if self.dependency_environment is not None:
-            text = text.replace(str(self.dependency_environment), _DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
-        text = text.replace(str(self.source_root), _SOURCE_TREE_PLACEHOLDER)
+            text = text.replace(str(self.dependency_environment), DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
+        text = text.replace(str(self.source_root), SOURCE_TREE_PLACEHOLDER)
         text = text.replace(str(self.temporary_root), _SYNTHETIC_RUNTIME_PLACEHOLDER)
         home = self.environment.get(_COLD_HOME_VARIABLE)
         if home:
             text = text.replace(home, _RUNTIME_HOME_PLACEHOLDER)
         return text
-
-
-def _run_bounded_process(
-    argv: Sequence[str],
-    *,
-    cwd: Path,
-    environment: Mapping[str, str],
-    timeout_seconds: float,
-    output_limit_bytes: int = _OUTPUT_LIMIT,
-) -> ProcessExecution:
-    """Run one command in an owned process group and retain bounded evidence."""
-    started = time.monotonic()
-    # A child process is required to exercise the checked public executable and uv as real boundaries.
-    try:
-        process = subprocess.Popen(
-            list(argv),
-            cwd=cwd,
-            env=dict(environment),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            close_fds=True,
-            start_new_session=True,
-        )
-    except OSError:
-        return ProcessExecution(
-            exit_status=_PROCESS_LAUNCH_EXIT_CODE,
-            stdout=_EMPTY,
-            stderr=_EMPTY,
-            duration_seconds=time.monotonic() - started,
-            diagnostics=_PROCESS_LAUNCH_FAILED,
-        )
-    try:
-        try:
-            stdout_bytes, stderr_bytes = process.communicate(timeout=timeout_seconds)
-            diagnostics = _EMPTY
-        except subprocess.TimeoutExpired:
-            _stop_process_group(process)
-            stdout_bytes, stderr_bytes = process.communicate()
-            diagnostics = _PROCESS_TIMEOUT_DETAIL
-        except BaseException:
-            _stop_process_group(process)
-            process.communicate()
-            raise
-    finally:
-        if process.poll() is None:
-            _stop_process_group(process)
-    output_exceeded = len(stdout_bytes) > output_limit_bytes or len(stderr_bytes) > output_limit_bytes
-    if output_exceeded:
-        diagnostics = _PROCESS_OUTPUT_LIMIT_DETAIL
-    return ProcessExecution(
-        exit_status=process.returncode if process.returncode is not None else _PROCESS_FAILURE,
-        stdout=stdout_bytes[:output_limit_bytes].decode(_UTF8, errors=_UTF8_REPLACEMENT),
-        stderr=stderr_bytes[:output_limit_bytes].decode(_UTF8, errors=_UTF8_REPLACEMENT),
-        duration_seconds=time.monotonic() - started,
-        diagnostics=diagnostics,
-    )
-
-
-def _stop_process_group(process: subprocess.Popen[bytes]) -> None:
-    """Terminate every process in the command group, escalating after a short grace."""
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    try:
-        process.wait(timeout=_PROCESS_TERMINATION_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return
-    try:
-        process.wait()
-    except ChildProcessError:
-        return
-
-
-def _environment_cache_key(source_root: Path) -> str:
-    """Hash dependency inputs and interpreter identity for an immutable environment."""
-    digest = hashlib.sha256()
-    for relative_path in _ENVIRONMENT_MANIFESTS:
-        manifest_path = source_root / relative_path
-        digest.update(relative_path.encode(_UTF8))
-        if manifest_path.is_file():
-            digest.update(manifest_path.read_bytes())
-        elif relative_path in _ENVIRONMENT_REQUIRED_MANIFESTS:
-            raise FileNotFoundError(_ENVIRONMENT_INPUT_MISSING.format(path=relative_path))
-    identity = (
-        _ENVIRONMENT_GROUPS,
-        str(Path(sys.executable).resolve()),
-        sys.version,
-        sys.implementation.cache_tag or _UNKNOWN_REVISION,
-        platform.platform(),
-    )
-    digest.update(json.dumps(identity, separators=_JSON_SEPARATORS).encode(_UTF8))
-    return digest.hexdigest()
-
-
-def _environment_cache_root() -> Path:
-    """Return the caller-owned, machine-local cache root for immutable environments."""
-    cache_name = f"{_ENVIRONMENT_CACHE_DIRECTORY}-{os.getuid()}"
-    return Path(tempfile.gettempdir()) / cache_name
-
-
-def ensure_dependency_environment(source_root: Path) -> Path:
-    """Prepare or reuse a locked environment that contains dependencies but no app install."""
-    resolved_root = source_root.expanduser().resolve()
-    cache_root = _environment_cache_root()
-    cache_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    cache_root.chmod(0o700)
-    generation = _environment_cache_key(resolved_root)
-    environment_path = cache_root / generation
-    lock_path = cache_root / f"{generation}{_ENVIRONMENT_LOCK_SUFFIX}"
-    with lock_path.open("a+b") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        if environment_path.exists():
-            _validate_dependency_environment(environment_path, generation)
-            return environment_path
-        environment = _dependency_sync_environment(cache_root, environment_path)
-        sync_result = _run_bounded_process(
-            (
-                *_UV_SYNC_ARGUMENTS,
-                str(resolved_root),
-                _UV_LOCKED_OPTION,
-                _UV_NO_INSTALL_PROJECT_OPTION,
-                _UV_NO_DEFAULT_GROUPS_OPTION,
-            ),
-            cwd=resolved_root,
-            environment=environment,
-            timeout_seconds=_UV_SYNC_TIMEOUT_SECONDS,
-        )
-        if sync_result.exit_status != 0 or sync_result.diagnostics:
-            if environment_path.exists() and not environment_path.is_symlink():
-                shutil.rmtree(environment_path)
-            detail = _PROCESS_FAILURE_DETAIL.format(exit_status=sync_result.exit_status)
-            raise RuntimeError(_ENVIRONMENT_SYNC_FAILED.format(detail=detail))
-        manifest_path = environment_path / _ENVIRONMENT_MANIFEST_FILENAME
-        manifest_path.write_text(json.dumps({"key": generation, "groups": _ENVIRONMENT_GROUPS}), encoding=_UTF8)
-        _validate_dependency_environment(environment_path, generation)
-        return environment_path
-
-
-def _dependency_sync_environment(cache_root: Path, environment_path: Path) -> dict[str, str]:
-    """Build an allowlisted environment for uv without inheriting credentials or project config."""
-    runtime_home = cache_root / _SYNTHETIC_HOME_DIRECTORY
-    runtime_cache = cache_root / _SYNTHETIC_CACHE_DIRECTORY
-    runtime_temp = cache_root / _SYNTHETIC_TEMP_DIRECTORY
-    runtime_home.mkdir(mode=0o700, parents=True, exist_ok=True)
-    runtime_cache.mkdir(mode=0o700, parents=True, exist_ok=True)
-    runtime_temp.mkdir(mode=0o700, parents=True, exist_ok=True)
-    child_environment = {
-        _PATH_VARIABLE: os.environ.get(_PATH_VARIABLE, _EMPTY),
-        _COLD_HOME_VARIABLE: str(runtime_home),
-        _UV_CACHE_VARIABLE: str(runtime_cache),
-        _ENVIRONMENT_VARIABLE: str(environment_path),
-        _LOCALE_VARIABLE: os.environ.get(_LOCALE_VARIABLE, _DEFAULT_LANGUAGE),
-        _TMP_VARIABLE: str(runtime_temp),
-    }
-    return child_environment
-
-
-def _validate_dependency_environment(environment_path: Path, generation: str) -> None:
-    """Refuse an incomplete or mismatched cached environment without mutating it."""
-    manifest_path = environment_path / _ENVIRONMENT_MANIFEST_FILENAME
-    python_path = environment_path / _PYTHON_ENVIRONMENT_EXECUTABLE
-    config_path = environment_path / _VENV_CONFIG_FILENAME
-    if (
-        environment_path.is_symlink()
-        or not environment_path.is_dir()
-        or not manifest_path.is_file()
-        or not python_path.is_file()
-        or not config_path.is_file()
-    ):
-        raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name))
-    try:
-        manifest: object = json.loads(manifest_path.read_text(encoding=_UTF8))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name)) from exc
-    if manifest != {_MANIFEST_KEY_FIELD: generation, _MANIFEST_GROUPS_FIELD: _ENVIRONMENT_GROUPS}:
-        raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name))
 
 
 def _make_cold_environment(
@@ -784,7 +567,7 @@ def _make_cold_environment(
         _LOCALE_VARIABLE: os.environ.get(_LOCALE_VARIABLE, _DEFAULT_LANGUAGE),
         _COLD_HOME_VARIABLE: str(home),
         _TELECLAUDE_HOME_VARIABLE: str(home),
-        _ENVIRONMENT_VARIABLE: str(dependency_environment),
+        PROJECT_ENVIRONMENT_VARIABLE: str(dependency_environment),
         _UV_NO_SYNC_VARIABLE: _UV_NO_SYNC_VALUE,
         _NO_BYTECODE_VARIABLE: _TRUE_TEXT,
         _NO_USER_SITE_VARIABLE: _TRUE_TEXT,
@@ -809,8 +592,8 @@ def _sanitize_report_text(
 ) -> str:
     """Remove machine-local source, environment and disposable paths from retained output."""
     replacements = [
-        (str(source_root), _SOURCE_TREE_PLACEHOLDER),
-        (str(dependency_environment), _DEPENDENCY_ENVIRONMENT_PLACEHOLDER),
+        (str(source_root), SOURCE_TREE_PLACEHOLDER),
+        (str(dependency_environment), DEPENDENCY_ENVIRONMENT_PLACEHOLDER),
     ]
     replacements.extend(
         (child_environment[name], _SYNTHETIC_RUNTIME_PLACEHOLDER)
@@ -860,7 +643,7 @@ def _open_terminal(environment: Mapping[str, str]) -> PersistentTerminal:
         [_BASH_EXECUTABLE, _BASH_NO_PROFILE_OPTION, _BASH_NO_RC_OPTION, _BASH_INTERACTIVE_OPTION],
         environment=terminal_environment,
         timeout_seconds=_FULL_COMMAND_TIMEOUT_SECONDS,
-        output_limit_bytes=_OUTPUT_LIMIT,
+        output_limit_bytes=DEFAULT_OUTPUT_LIMIT_BYTES,
         disable_echo=True,
     )
     terminal.__enter__()
@@ -883,7 +666,7 @@ def _record_terminal_command(
             # bin/telec runs `uv run` without synchronization, so the checked executable selects the checked
             # revision's prepared dependency environment; the installation's processes never inherit it.
             selector = _ENVIRONMENT_ASSIGNMENT.format(
-                name=_ENVIRONMENT_VARIABLE, value=resources.dependency_environment
+                name=PROJECT_ENVIRONMENT_VARIABLE, value=resources.dependency_environment
             )
             argv_tuple = (_ENV_EXECUTABLE, selector, *argv_tuple)
     try:
@@ -895,7 +678,7 @@ def _record_terminal_command(
                 exit_status=None,
                 duration_seconds=time.monotonic() - started,
                 stdout=resources.sanitize(exc.output)[:_DIAGNOSTIC_LIMIT],
-                diagnostics=_PROCESS_TIMEOUT_DETAIL,
+                diagnostics=PROCESS_TIMEOUT_DETAIL,
             )
         )
         return None, exc.output
@@ -920,7 +703,7 @@ def _record_external_command(
     evidence: list[CommandEvidence],
 ) -> ProcessExecution:
     """Run a lifecycle command in an owned process group and retain bounded evidence."""
-    result = _run_bounded_process(
+    result = run_bounded_process(
         argv,
         cwd=cwd,
         environment=resources.environment,
@@ -1410,7 +1193,7 @@ def _run_installation_step(
     failure: str,
 ) -> ProcessExecution:
     """Run one installation step with bounded evidence; a failure retains the process output and installer log."""
-    result = _run_bounded_process(
+    result = run_bounded_process(
         argv,
         cwd=resources.source_root,
         environment=environment,
@@ -1468,7 +1251,7 @@ def _provision_installation(
     result = _run_installation_step(
         resources,
         (
-            str(dependency_environment / _PYTHON_ENVIRONMENT_EXECUTABLE),
+            str(dependency_environment / PYTHON_ENVIRONMENT_EXECUTABLE),
             *_PROVISIONING_ARGUMENTS,
             _PROVISIONING_SOURCE_OPTION,
             str(resources.source_root),
@@ -1492,7 +1275,7 @@ def _active_release_location(
     environment[_PYTHON_PATH_VARIABLE] = str(resources.source_root)
     result = _run_installation_step(
         resources,
-        (str(dependency_environment / _PYTHON_ENVIRONMENT_EXECUTABLE), *_ACTIVE_LOCATION_ARGUMENTS),
+        (str(dependency_environment / PYTHON_ENVIRONMENT_EXECUTABLE), *_ACTIVE_LOCATION_ARGUMENTS),
         environment=environment,
         log_path=None,
         evidence=evidence,
@@ -1527,7 +1310,9 @@ def _converge_installation(resources: FullRuntimeResources, location: Path, evid
 
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     resources.install_attempted = True
-    dependency_environment = ensure_dependency_environment(resources.source_root)
+    lease = ensure_dependency_environment(resources.source_root)
+    resources.leases.append(lease)
+    dependency_environment = lease.path
     resources.dependency_environment = dependency_environment
     _provision_installation(resources, dependency_environment, evidence)
     _converge_installation(resources, _active_release_location(resources, dependency_environment, evidence), evidence)
@@ -1626,7 +1411,7 @@ def _full_restart_persistence(resources: FullRuntimeResources, evidence: list[Co
 
 
 def _full_failure_cleanup_probe(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
-    failure = _run_bounded_process(
+    failure = run_bounded_process(
         (_FALSE_EXECUTABLE,),
         cwd=resources.source_root,
         environment=resources.environment,
@@ -1642,7 +1427,7 @@ def _full_failure_cleanup_probe(resources: FullRuntimeResources, evidence: list[
     )
     if failure.exit_status == _PROCESS_SUCCESS:
         raise ValueError(_FULL_FAILURE_PROBE_FAILED)
-    timeout = _run_bounded_process(
+    timeout = run_bounded_process(
         (_SLEEP_EXECUTABLE, _TIMEOUT_PROBE_DURATION),
         cwd=resources.source_root,
         environment=resources.environment,
@@ -1656,7 +1441,7 @@ def _full_failure_cleanup_probe(resources: FullRuntimeResources, evidence: list[
             diagnostics=timeout.diagnostics,
         )
     )
-    if timeout.diagnostics != _PROCESS_TIMEOUT_DETAIL:
+    if timeout.diagnostics != PROCESS_TIMEOUT_DETAIL:
         raise ValueError(_FULL_FAILURE_PROBE_FAILED)
 
 
@@ -1680,7 +1465,7 @@ def _cold_entrypoint_scenario(
     evidence: list[CommandEvidence] = []
     scenario_started = time.monotonic()
     for argv, command_environment in command_rows:
-        result = _run_bounded_process(
+        result = run_bounded_process(
             argv,
             cwd=source_root,
             environment=command_environment,
@@ -1707,14 +1492,14 @@ def _cold_entrypoint_scenario(
     module_environment = dict(child_environment)
     module_environment[_PYTHON_PATH_VARIABLE] = str(source_root)
     module_environment[_PATH_VARIABLE] = (
-        f"{dependency_environment / _PYTHON_ENVIRONMENT_EXECUTABLE.parent}"
+        f"{dependency_environment / PYTHON_ENVIRONMENT_EXECUTABLE.parent}"
         f"{_PATH_SEPARATOR}{module_environment[_PATH_VARIABLE]}"
     )
     module_argv = (
         _PYTHON_EXECUTABLE,
         *_MODULE_HELP_ARGUMENTS,
     )
-    module_result = _run_bounded_process(
+    module_result = run_bounded_process(
         module_argv,
         cwd=source_root,
         environment=module_environment,
@@ -1754,7 +1539,7 @@ def _cold_entrypoint_scenario(
         _PACKAGE_IMPORT_ISOLATED_OPTION,
         str(_PACKAGE_IMPORT_SCRIPT),
     )
-    import_result = _run_bounded_process(
+    import_result = run_bounded_process(
         import_argv,
         cwd=source_root,
         environment=module_environment,
@@ -1803,11 +1588,15 @@ def run_profile(
 ) -> AcceptanceReport:
     """Run the selected profile with disposable state and report cleanup separately."""
     resolved_root = source_root.expanduser().resolve()
-    temporary_root = Path(tempfile.mkdtemp(prefix=_ENVIRONMENT_CACHE_DIRECTORY))
+    temporary_root = Path(tempfile.mkdtemp(prefix=_TEMPORARY_ROOT_PREFIX))
+    # Every generation this run uses stays leased until the run, cleanup included, has ended.
+    leases: list[EnvironmentLease] = []
     try:
 
         def cold_action() -> ScenarioResult:
-            dependency_environment = ensure_dependency_environment(resolved_root)
+            lease = ensure_dependency_environment(resolved_root)
+            leases.append(lease)
+            dependency_environment = lease.path
             child_environment = _make_cold_environment(resolved_root, dependency_environment, temporary_root)
             return _cold_entrypoint_scenario(resolved_root, child_environment, dependency_environment)
 
@@ -1826,6 +1615,7 @@ def run_profile(
                 environment=_full_runtime_environment(),
                 source_revision=source_revision,
                 source_tree=source_tree,
+                leases=leases,
             )
             actions.update(
                 {
@@ -1865,6 +1655,9 @@ def run_profile(
         if temporary_root.exists():
             shutil.rmtree(temporary_root)
         raise
+    finally:
+        for lease in leases:
+            lease.close()
 
 
 def write_report(report: AcceptanceReport, report_path: Path) -> None:
@@ -1967,6 +1760,7 @@ def _handle_profile_termination(_signum: int, _frame: FrameType | None) -> None:
 def main(arguments: list[str] | None = None) -> int:
     """Run the requested profile and write a structured result for the checked source."""
     parsed = _parse_arguments(sys.argv[1:] if arguments is None else arguments)
+    configure_logging(LOG_APP_NAME)
     selected_profile = Profile(parsed.profile)
     previous_termination_handler = signal.signal(signal.SIGTERM, _handle_profile_termination)
     try:
