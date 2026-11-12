@@ -23,6 +23,8 @@ from pathlib import Path
 from types import FrameType
 from typing import cast
 
+from instrukt_ai_logging import configure_logging
+
 from tools.ci.bounded_process import (
     DEFAULT_OUTPUT_LIMIT_BYTES,
     PROCESS_TIMEOUT_DETAIL,
@@ -31,6 +33,7 @@ from tools.ci.bounded_process import (
 )
 from tools.ci.dependency_environment import (
     DEPENDENCY_ENVIRONMENT_PLACEHOLDER,
+    LOG_APP_NAME,
     PROJECT_ENVIRONMENT_VARIABLE,
     PYTHON_ENVIRONMENT_EXECUTABLE,
     EnvironmentLease,
@@ -1757,6 +1760,7 @@ def _handle_profile_termination(_signum: int, _frame: FrameType | None) -> None:
 def main(arguments: list[str] | None = None) -> int:
     """Run the requested profile and write a structured result for the checked source."""
     parsed = _parse_arguments(sys.argv[1:] if arguments is None else arguments)
+    configure_logging(LOG_APP_NAME)
     selected_profile = Profile(parsed.profile)
     previous_termination_handler = signal.signal(signal.SIGTERM, _handle_profile_termination)
     try:

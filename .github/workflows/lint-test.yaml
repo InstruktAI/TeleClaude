@@ -62,7 +62,7 @@ jobs:
         timeout-minutes: 10
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: uv run --no-project --python 3.12 python -P tools/ci/ci_runtime_acceptance.py --root "$GITHUB_WORKSPACE" --report "$RUNNER_TEMP/runtime-acceptance/report.json"
+        run: uv run --no-project --python 3.12 --with instruktai-python-logger==0.6.7 python -P tools/ci/ci_runtime_acceptance.py --root "$GITHUB_WORKSPACE" --report "$RUNNER_TEMP/runtime-acceptance/report.json"
 
       - name: Retain full runtime report
         if: always()

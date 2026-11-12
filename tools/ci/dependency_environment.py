@@ -17,8 +17,12 @@ from pathlib import Path
 from types import TracebackType
 from typing import IO, Self
 
+from instrukt_ai_logging import get_logger
+
 from tools.ci.bounded_process import ProcessExecution, run_bounded_process
 
+LOG_APP_NAME = "teleclaude_runtime_acceptance"
+_LOGGER_SUFFIX = "dependency_environment"
 _EMPTY = ""
 _UTF8 = "utf-8"
 _UNKNOWN_REVISION = "unknown"
@@ -79,6 +83,9 @@ _DETAIL_SEPARATOR = " "
 DEPENDENCY_ENVIRONMENT_PLACEHOLDER = "<dependency-environment>"
 PROJECT_ENVIRONMENT_VARIABLE = "UV_PROJECT_ENVIRONMENT"
 PYTHON_ENVIRONMENT_EXECUTABLE = Path("bin") / _PYTHON_EXECUTABLE
+
+
+logger = get_logger(f"{LOG_APP_NAME}.{_LOGGER_SUFFIX}")
 
 
 def _environment_cache_key(source_root: Path) -> str:
@@ -182,9 +189,10 @@ def ensure_dependency_environment(source_root: Path) -> EnvironmentLease:
         # Conversion is not atomic: another run may finish or retire the generation in the gap, so the
         # exclusive holder looks again before it builds.
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        built = _generation_defect(environment_path, generation) is not None
-        if built:
-            _rebuild_generation(store_root, resolved_root, generation)
+        defect = _generation_defect(environment_path, generation)
+        built = defect is not None
+        if defect is not None:
+            _rebuild_generation(store_root, resolved_root, generation, defect)
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
         _bound_store(store_root, generation, built=built)
         return EnvironmentLease(environment_path, lock_file)
@@ -193,12 +201,14 @@ def ensure_dependency_environment(source_root: Path) -> EnvironmentLease:
         raise
 
 
-def _rebuild_generation(store_root: Path, source_root: Path, generation: str) -> None:
+def _rebuild_generation(store_root: Path, source_root: Path, generation: str, defect: str) -> None:
     """Build one generation under its exclusive lock, retiring whatever incomplete entry holds its path."""
+    started = time.monotonic()
     environment_path = store_root / generation
     if os.path.lexists(environment_path):
         # A link, a thinned directory or a mismatched manifest is purge or kill damage, not state worth keeping.
         _retire_entry(store_root, environment_path)
+        logger.warning("generation_recovered", generation=generation, reason=defect)
     # A sync holds the download-cache lock shared, so clearing the cache never runs under it.
     with (store_root / _CACHE_LOCK_FILENAME).open("a+b") as cache_lock:
         fcntl.flock(cache_lock.fileno(), fcntl.LOCK_SH)
@@ -233,6 +243,7 @@ def _rebuild_generation(store_root: Path, source_root: Path, generation: str) ->
     if _generation_defect(environment_path, generation) is not None:
         raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name))
     _stamp_last_use(environment_path)
+    logger.debug("generation_built", generation=generation, duration_seconds=round(time.monotonic() - started, 3))
 
 
 def _sync_failure_detail(sync_result: ProcessExecution, store_root: Path, source_root: Path) -> str:
@@ -280,8 +291,8 @@ def _remove_retired_entry(retired: Path) -> None:
             os.unlink(retired)
         else:
             shutil.rmtree(retired)
-    except OSError:
-        pass
+    except OSError as error:
+        logger.warning("store_entry_removal_failed", entry=retired.name, error_class=type(error).__name__)
 
 
 def _stamp_last_use(environment_path: Path) -> None:
@@ -344,7 +355,8 @@ def _bound_store(store_root: Path, current_generation: str, *, built: bool) -> N
     """
     try:
         names = [entry.name for entry in os.scandir(store_root)]
-    except OSError:
+    except OSError as error:
+        logger.warning("store_sweep_failed", error_class=type(error).__name__)
         return
     for name in names:
         if _RETIRED_NAME.fullmatch(name):
@@ -394,8 +406,9 @@ def _retire_unused_generation(store_root: Path, name: str) -> None:
             # A run that took the lock between the first look and now has refreshed the stamp.
             if _is_stale(entry):
                 _retire_entry(store_root, entry)
-    except OSError:
-        return
+                logger.debug("generation_retired", generation=name)
+    except OSError as error:
+        logger.warning("store_entry_retention_failed", entry=name, error_class=type(error).__name__)
 
 
 def _tree_size_bytes(root: Path) -> int:
@@ -420,14 +433,21 @@ def _clear_oversized_download_cache(store_root: Path) -> None:
     """Clear the download cache when a build left it above the ceiling and no sync is using it."""
     cache_path = store_root / _SYNTHETIC_CACHE_DIRECTORY
     try:
-        if not cache_path.is_dir() or _tree_size_bytes(cache_path) <= _DOWNLOAD_CACHE_CEILING_BYTES:
+        if not cache_path.is_dir():
+            return
+        size_bytes = _tree_size_bytes(cache_path)
+        if size_bytes <= _DOWNLOAD_CACHE_CEILING_BYTES:
             return
         lock_file = _try_lock_exclusive(store_root / _CACHE_LOCK_FILENAME)
         if lock_file is None:
+            logger.debug("download_cache_clear_skipped", size_bytes=size_bytes, reason="in_use")
             return
         with lock_file:
             # Held only for the rename: a sync never sees a partly deleted cache.
             retired = _rename_aside(store_root, cache_path)
         _remove_retired_entry(retired)
-    except OSError:
-        return
+        logger.debug("download_cache_cleared", size_bytes=size_bytes)
+    except OSError as error:
+        logger.warning(
+            "store_entry_clearing_failed", entry=_SYNTHETIC_CACHE_DIRECTORY, error_class=type(error).__name__
+        )
