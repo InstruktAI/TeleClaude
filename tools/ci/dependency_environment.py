@@ -268,7 +268,7 @@ def _sync_failure_detail(sync_result: ProcessExecution, store_root: Path, source
 
 
 def _sanitize_evidence(text: str, store_root: Path, source_root: Path) -> str:
-    """Replace the source tree, the store and the account home, longest first, with their placeholders."""
+    """Replace the source tree, then the store, then the account home with their placeholders."""
     text = text.replace(str(source_root), SOURCE_TREE_PLACEHOLDER)
     text = text.replace(str(store_root), DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
     return text.replace(pwd.getpwuid(os.getuid()).pw_dir, "<account-home>")
