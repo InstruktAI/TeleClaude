@@ -83,6 +83,21 @@ And the builder resolves conflicts, verifies, commits, and reports MERGE RECOVER
 And the orchestrator re-enters `telec todo work` after the builder idles so review can proceed from the recovered HEAD
 ```
 
+<!-- planned:work-merge-refusal-not-conflict -->
+
+```gherkin
+Given a Todo has a live sdlc/procedure/lifecycle/work/build session for its worktree
+And `telec todo work` merges origin/main into that worktree before dispatch or review
+When the merge stops without leaving any conflicted path, such as the worktree's commit gate refusing the merge commit
+Then `telec todo work` returns a recovery handoff that reports the merge as refused, never as a conflict
+And the handoff carries the refusal's own output as its evidence
+And the orchestrator sends the live builder recovery instructions for that refusal, asking for no conflict resolution
+And the worktree, the Todo's lifecycle phase, its build stamps, and its review verdicts are as they were before the merge
+And the orchestrator re-enters `telec todo work` after the builder idles so the workflow continues from the recovered HEAD
+```
+
+<!-- /planned:work-merge-refusal-not-conflict -->
+
 ```
 Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
 When the orchestrator calls "telec todo work my-feature"
