@@ -70,12 +70,12 @@ _ENVIRONMENT_INVALID = "The dependency-only environment generation is incomplete
 _ENVIRONMENT_SYNC_FAILED = "Could not prepare the locked dependency-only environment: {detail}"
 _ENVIRONMENT_INPUT_MISSING = "The dependency environment input is missing: {path}"
 _SYNC_EVIDENCE_TAIL_LIMIT = 3072
-_SOURCE_TREE_PLACEHOLDER = "<source-tree>"
 _STORE_REFUSED = "The dependency environment store is a link, is not a directory, or belongs to another user."
 _CACHE_VARIABLE = "XDG_CACHE_HOME"
 _STORE_MODE = 0o700
 _PROCESS_FAILURE_DETAIL = "The command failed with exit status {exit_status}."
 DEPENDENCY_ENVIRONMENT_PLACEHOLDER = "<dependency-environment>"
+SOURCE_TREE_PLACEHOLDER = "<source-tree>"
 PROJECT_ENVIRONMENT_VARIABLE = "UV_PROJECT_ENVIRONMENT"
 PYTHON_ENVIRONMENT_EXECUTABLE = Path("bin") / _PYTHON_EXECUTABLE
 
@@ -256,7 +256,7 @@ def _sync_failure_detail(sync_result: ProcessExecution, store_root: Path, source
 
 def _sanitize_evidence(text: str, store_root: Path, source_root: Path) -> str:
     """Replace the source tree, the store and the account home, longest first, with their placeholders."""
-    text = text.replace(str(source_root), _SOURCE_TREE_PLACEHOLDER)
+    text = text.replace(str(source_root), SOURCE_TREE_PLACEHOLDER)
     text = text.replace(str(store_root), DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
     return text.replace(pwd.getpwuid(os.getuid()).pw_dir, "<account-home>")
 

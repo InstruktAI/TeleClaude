@@ -36,6 +36,7 @@ from tools.ci.dependency_environment import (
     LOG_APP_NAME,
     PROJECT_ENVIRONMENT_VARIABLE,
     PYTHON_ENVIRONMENT_EXECUTABLE,
+    SOURCE_TREE_PLACEHOLDER,
     EnvironmentLease,
     ensure_dependency_environment,
 )
@@ -134,7 +135,6 @@ _PROCESS_SUCCESS = 0
 _REPORT_NAME_TEMPLATE = "runtime-acceptance-{identifier}.json"
 _PATH_SEPARATOR = os.pathsep
 _SCENARIO_PUBLIC_RESULT = "The public command did not return a non-empty successful result."
-_SOURCE_TREE_PLACEHOLDER = "<source-tree>"
 _SYNTHETIC_RUNTIME_PLACEHOLDER = "<synthetic-runtime>"
 _RUNTIME_HOME_PLACEHOLDER = "<runtime-home>"
 _ADMIN_ROLE = "admin"
@@ -519,7 +519,7 @@ class FullRuntimeResources:
         """Remove source, home and disposable paths from retained command evidence."""
         if self.dependency_environment is not None:
             text = text.replace(str(self.dependency_environment), DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
-        text = text.replace(str(self.source_root), _SOURCE_TREE_PLACEHOLDER)
+        text = text.replace(str(self.source_root), SOURCE_TREE_PLACEHOLDER)
         text = text.replace(str(self.temporary_root), _SYNTHETIC_RUNTIME_PLACEHOLDER)
         home = self.environment.get(_COLD_HOME_VARIABLE)
         if home:
@@ -592,7 +592,7 @@ def _sanitize_report_text(
 ) -> str:
     """Remove machine-local source, environment and disposable paths from retained output."""
     replacements = [
-        (str(source_root), _SOURCE_TREE_PLACEHOLDER),
+        (str(source_root), SOURCE_TREE_PLACEHOLDER),
         (str(dependency_environment), DEPENDENCY_ENVIRONMENT_PLACEHOLDER),
     ]
     replacements.extend(
