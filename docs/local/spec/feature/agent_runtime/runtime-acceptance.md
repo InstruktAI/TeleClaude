@@ -54,6 +54,27 @@ incorrect result, lost state or cleanup failure fails the profile. Expected
 refusals are verified against their public result and absence of side effects.
 An unexecuted required scenario is not a pass.
 
+<!-- planned:acceptance-env-cache-recovers -->
+
+Both profiles run the checked source from a dependency-only environment the
+harness keeps as its own derived store: one per user and machine, in that
+user's cache directory, never in a temporary directory the operating system
+purges (`sdlc/policy/state-storage`). A generation in the store is keyed by the
+dependency inputs and interpreter identity; rebuilding one costs a dependency
+synchronization, with network transfer for every package the store's download
+cache lacks. A run that finds its generation incomplete or not matching its key
+retires that generation and builds it again in the same run. Retirement removes
+only entries inside the store's own directory and follows no link, and a store
+directory that is itself a link or belongs to another user fails the run rather
+than being used. A rebuild whose synchronization fails fails the scenario with
+the synchronization's exit status and bounded output. A run never retires a
+generation another run is building or has just used. A generation no run has
+used within the retention window the controller declares is retired, so the
+store holds the generations in recent use
+(`general/policy/shared-machine-resources`).
+
+<!-- /planned:acceptance-env-cache-recovers -->
+
 Persistent terminal commands complete only after a whole newline-terminated
 status frame is received. The controller consumes that frame and preserves any
 following bytes for the next command. Partial numeric status is not a completed
@@ -155,3 +176,14 @@ And success leaves the full installation proof required
 - The module import check loads every module once, in package order, in one
   interpreter. An import cycle that fails only when a different module of the
   cycle is imported first can still pass.
+
+<!-- planned:acceptance-env-cache-recovers -->
+
+- Generation validation checks the generation's completion markers and
+  interpreter, not every installed file. A generation damaged without losing
+  those still validates, and the damage surfaces as a failing scenario until
+  that generation is removed.
+- The store's download cache keeps every package version the dependency inputs
+  have pulled in. The harness retires generations, not download cache entries.
+
+<!-- /planned:acceptance-env-cache-recovers -->
