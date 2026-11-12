@@ -54,8 +54,6 @@ incorrect result, lost state or cleanup failure fails the profile. Expected
 refusals are verified against their public result and absence of side effects.
 An unexecuted required scenario is not a pass.
 
-<!-- planned:acceptance-env-cache-recovers -->
-
 Both profiles run the checked source from a dependency-only environment the
 harness keeps as its own derived store: one per user and machine, in that
 user's cache directory, never in a temporary directory the operating system
@@ -75,8 +73,6 @@ store holds the generations in recent use
 bounded by the size ceiling the controller declares: a run that has built a
 generation and finds the download cache above that ceiling clears it, and
 later synchronizations download again what they need.
-
-<!-- /planned:acceptance-env-cache-recovers -->
 
 Persistent terminal commands complete only after a whole newline-terminated
 status frame is received. The controller consumes that frame and preserves any
@@ -180,13 +176,9 @@ And success leaves the full installation proof required
   interpreter. An import cycle that fails only when a different module of the
   cycle is imported first can still pass.
 
-<!-- planned:acceptance-env-cache-recovers -->
-
 - Generation validation checks the generation's completion markers and
   interpreter, not every installed file. A generation damaged without losing
   those still validates, and the damage surfaces as a failing scenario until
   that generation is removed.
 - The download cache can exceed its ceiling by what one synchronization adds,
   and clearing it is skipped while a synchronization is using it.
-
-<!-- /planned:acceptance-env-cache-recovers -->
