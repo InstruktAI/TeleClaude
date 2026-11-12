@@ -198,23 +198,6 @@ Ready for review.
 - If a task fails, analyze the error and retry.
 - If stuck after two attempts, stop and report the blocker.
 
-<!-- planned-change:work-merge-refusal-not-conflict -->
-
-- **Machine-surfaced process failures are yours to recover.** When one reaches you,
-  this procedure is the recovery contract — no orchestrator guidance accompanies it:
-  - **`MERGE_MAIN_FAILED`** (the machine's pre-dispatch/pre-review merge of
-    `origin/main` into your worktree failed): accepted `origin/main` is the leading
-    baseline. Reapply the todo's prepared intent on top of it, resolve the conflicts in
-    your worktree, rerun the quality gates, and emit the correct lifecycle stamp/report
-    for your phase.
-  - **Failed lint/test gates, a dirty worktree, a missing stamp, or stale branch
-    publication**: you mutate the worktree and re-emit; the orchestrator never edits
-    code or tests.
-  - If the facts plus this procedure are not enough to proceed, report that
-    explicitly — it is a defect in this brief, and saying so is the correct outcome.
-
-<!-- change:work-merge-refusal-not-conflict -->
-
 - **Machine-surfaced process failures are yours to recover.** When one reaches you,
   this procedure is the recovery contract — no orchestrator guidance accompanies it:
   - **`MERGE_MAIN_FAILED`** (the machine's pre-dispatch/pre-review merge of
@@ -237,5 +220,3 @@ Ready for review.
     code or tests.
   - If the facts plus this procedure are not enough to proceed, report that
     explicitly — it is a defect in this brief, and saying so is the correct outcome.
-
-<!-- /planned-change:work-merge-refusal-not-conflict -->
