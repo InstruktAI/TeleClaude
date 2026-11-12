@@ -299,7 +299,11 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         worktree_fingerprint_before=worktree_fingerprint_before,
         worktree_fingerprint_after=worktree_fingerprint_after,
     )
-    if merge_result.outcome == WorktreeMergeOutcome.CONFLICT:
+    if merge_result.outcome in (
+        WorktreeMergeOutcome.CONFLICT,
+        WorktreeMergeOutcome.REFUSED,
+        WorktreeMergeOutcome.UNESTABLISHED,
+    ):
         _log_next_work_phase(phase_slug, "merge_main", merge_started, "error", "merge_main_failed")
         state = await todos_db.read_state(resolved_slug)
         phase_raw = state.get("lifecycle_phase") if state is not None else ""
@@ -308,6 +312,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             db,
             resolved_slug,
             merge_result.message,
+            merge_result.outcome,
             lifecycle_phase=lifecycle_phase,
         )
     head_after_merge = merge_result.head_after
@@ -430,8 +435,14 @@ async def _advance_prepared_to_build_started(
     await writer.commit(todos_db, slug)
 
 
-async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, lifecycle_phase: str) -> str:
-    """Format orchestrator recovery instructions for work-entry main-sync conflicts."""
+async def _format_merge_main_recovery(
+    db: Db, slug: str, merge_error: str, outcome: WorktreeMergeOutcome, *, lifecycle_phase: str
+) -> str:
+    """Format orchestrator recovery instructions for a failed work-entry main-sync.
+
+    A conflicted merge routes conflict resolution to the live builder; a refused merge or one whose kind
+    is unestablished routes a re-merge that the builder recovers from by what it shows.
+    """
     builder_id = await find_live_session_for_slug(db, slug, LifecycleProcedure.BUILD.value)
     if builder_id is None:
         return format_error(
@@ -446,9 +457,22 @@ async def _format_merge_main_recovery(db: Db, slug: str, merge_error: str, *, li
 
     completion_clause = _merge_main_recovery_completion_clause(slug, lifecycle_phase)
     wait_clause = _merge_main_recovery_wait_clause(slug, lifecycle_phase)
-    message = _MERGE_MAIN_RECOVERY_MESSAGE_TEMPLATE.format(
-        slug=slug, completion_clause=completion_clause, merge_error=merge_error
-    )
+    if outcome == WorktreeMergeOutcome.CONFLICT:
+        message = _MERGE_MAIN_RECOVERY_MESSAGE_TEMPLATE.format(
+            slug=slug, completion_clause=completion_clause, merge_error=merge_error
+        )
+    else:
+        message = (
+            f"The orchestrator hit a merge failure while running `telec todo work {slug}` against your worktree. "
+            "You did not encounter this directly; the orchestrator is routing the work-entry failure back to you.\n\n"
+            "No conflict is known and none is to be resolved. Merge origin/main again in your worktree and recover "
+            "by what that merge shows. If it conflicts, preserve accepted origin/main behavior as the leading "
+            "baseline, reapply this todo's prepared intent from implementation-plan and PRD/input on top, and "
+            "resolve the conflicts. If it is refused, fix a cause that lies in this todo's work; leave a cause "
+            "outside it intact and report it as your blocker. Run relevant focused tests plus telec repo test and "
+            f"telec repo lint, commit the merge, then {completion_clause}\n\n"
+            f"Work-entry merge failure:\n{merge_error}"
+        )
     return (
         f"MERGE MAIN RECOVERY REQUIRED: {slug}\n\n"
         "Work entry hit a recoverable worktree merge failure before it could continue.\n\n"
