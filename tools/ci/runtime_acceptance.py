@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import FrameType
@@ -30,8 +30,10 @@ from tools.ci.bounded_process import (
     run_bounded_process,
 )
 from tools.ci.dependency_environment import (
+    DEPENDENCY_ENVIRONMENT_PLACEHOLDER,
     PROJECT_ENVIRONMENT_VARIABLE,
     PYTHON_ENVIRONMENT_EXECUTABLE,
+    EnvironmentLease,
     ensure_dependency_environment,
 )
 from tools.ci.terminal import PersistentTerminal, TerminalFailure
@@ -130,7 +132,6 @@ _REPORT_NAME_TEMPLATE = "runtime-acceptance-{identifier}.json"
 _PATH_SEPARATOR = os.pathsep
 _SCENARIO_PUBLIC_RESULT = "The public command did not return a non-empty successful result."
 _SOURCE_TREE_PLACEHOLDER = "<source-tree>"
-_DEPENDENCY_ENVIRONMENT_PLACEHOLDER = "<dependency-environment>"
 _SYNTHETIC_RUNTIME_PLACEHOLDER = "<synthetic-runtime>"
 _RUNTIME_HOME_PLACEHOLDER = "<runtime-home>"
 _ADMIN_ROLE = "admin"
@@ -491,6 +492,7 @@ class FullRuntimeResources:
     source_revision: str
     source_tree: str
     dependency_environment: Path | None = None
+    leases: list[EnvironmentLease] = field(default_factory=list)
     admin_terminal: PersistentTerminal | None = None
     install_attempted: bool = False
     start_attempted: bool = False
@@ -513,7 +515,7 @@ class FullRuntimeResources:
     def sanitize(self, text: str) -> str:
         """Remove source, home and disposable paths from retained command evidence."""
         if self.dependency_environment is not None:
-            text = text.replace(str(self.dependency_environment), _DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
+            text = text.replace(str(self.dependency_environment), DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
         text = text.replace(str(self.source_root), _SOURCE_TREE_PLACEHOLDER)
         text = text.replace(str(self.temporary_root), _SYNTHETIC_RUNTIME_PLACEHOLDER)
         home = self.environment.get(_COLD_HOME_VARIABLE)
@@ -588,7 +590,7 @@ def _sanitize_report_text(
     """Remove machine-local source, environment and disposable paths from retained output."""
     replacements = [
         (str(source_root), _SOURCE_TREE_PLACEHOLDER),
-        (str(dependency_environment), _DEPENDENCY_ENVIRONMENT_PLACEHOLDER),
+        (str(dependency_environment), DEPENDENCY_ENVIRONMENT_PLACEHOLDER),
     ]
     replacements.extend(
         (child_environment[name], _SYNTHETIC_RUNTIME_PLACEHOLDER)
@@ -1305,7 +1307,9 @@ def _converge_installation(resources: FullRuntimeResources, location: Path, evid
 
 def _full_install_and_ready(resources: FullRuntimeResources, evidence: list[CommandEvidence]) -> None:
     resources.install_attempted = True
-    dependency_environment = ensure_dependency_environment(resources.source_root)
+    lease = ensure_dependency_environment(resources.source_root)
+    resources.leases.append(lease)
+    dependency_environment = lease.path
     resources.dependency_environment = dependency_environment
     _provision_installation(resources, dependency_environment, evidence)
     _converge_installation(resources, _active_release_location(resources, dependency_environment, evidence), evidence)
@@ -1582,10 +1586,14 @@ def run_profile(
     """Run the selected profile with disposable state and report cleanup separately."""
     resolved_root = source_root.expanduser().resolve()
     temporary_root = Path(tempfile.mkdtemp(prefix=_TEMPORARY_ROOT_PREFIX))
+    # Every generation this run uses stays leased until the run, cleanup included, has ended.
+    leases: list[EnvironmentLease] = []
     try:
 
         def cold_action() -> ScenarioResult:
-            dependency_environment = ensure_dependency_environment(resolved_root)
+            lease = ensure_dependency_environment(resolved_root)
+            leases.append(lease)
+            dependency_environment = lease.path
             child_environment = _make_cold_environment(resolved_root, dependency_environment, temporary_root)
             return _cold_entrypoint_scenario(resolved_root, child_environment, dependency_environment)
 
@@ -1604,6 +1612,7 @@ def run_profile(
                 environment=_full_runtime_environment(),
                 source_revision=source_revision,
                 source_tree=source_tree,
+                leases=leases,
             )
             actions.update(
                 {
@@ -1643,6 +1652,9 @@ def run_profile(
         if temporary_root.exists():
             shutil.rmtree(temporary_root)
         raise
+    finally:
+        for lease in leases:
+            lease.close()
 
 
 def write_report(report: AcceptanceReport, report_path: Path) -> None:

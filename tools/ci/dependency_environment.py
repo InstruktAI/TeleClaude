@@ -10,9 +10,12 @@ import platform
 import pwd
 import shutil
 import sys
+import uuid
 from pathlib import Path
+from types import TracebackType
+from typing import IO, Self
 
-from tools.ci.bounded_process import run_bounded_process
+from tools.ci.bounded_process import ProcessExecution, run_bounded_process
 
 _EMPTY = ""
 _UTF8 = "utf-8"
@@ -52,11 +55,18 @@ _SYNTHETIC_TEMP_DIRECTORY = "tmp"
 _ENVIRONMENT_INVALID = "The dependency-only environment generation is incomplete: {path}"
 _ENVIRONMENT_SYNC_FAILED = "Could not prepare the locked dependency-only environment: {detail}"
 _ENVIRONMENT_INPUT_MISSING = "The dependency environment input is missing: {path}"
+_SYNC_EVIDENCE_LABEL = "uv output (end): "
+_SYNC_EVIDENCE_TAIL_LIMIT = 3072
+_SOURCE_TREE_PLACEHOLDER = "<source-tree>"
+_ACCOUNT_HOME_PLACEHOLDER = "<account-home>"
+_RETIRED_MARKER = ".retired-"
 _STORE_REFUSED = "The dependency environment store is a link, is not a directory, or belongs to another user."
 _CACHE_VARIABLE = "XDG_CACHE_HOME"
 _DEFAULT_CACHE_DIRECTORY = ".cache"
 _STORE_MODE = 0o700
 _PROCESS_FAILURE_DETAIL = "The command failed with exit status {exit_status}."
+_DETAIL_SEPARATOR = " "
+DEPENDENCY_ENVIRONMENT_PLACEHOLDER = "<dependency-environment>"
 PROJECT_ENVIRONMENT_VARIABLE = "UV_PROJECT_ENVIRONMENT"
 PYTHON_ENVIRONMENT_EXECUTABLE = Path("bin") / _PYTHON_EXECUTABLE
 
@@ -117,40 +127,143 @@ def _environment_cache_root() -> Path:
     return store_root
 
 
-def ensure_dependency_environment(source_root: Path) -> Path:
-    """Prepare or reuse a locked environment that contains dependencies but no app install."""
+class EnvironmentLease:
+    """A generation path held in use: its shared lock keeps every other run from retiring it until closed."""
+
+    def __init__(self, path: Path, lock_file: IO[bytes]) -> None:
+        self.path = path
+        self._lock_file: IO[bytes] | None = lock_file
+
+    def close(self) -> None:
+        """Release the shared lock; closing twice is harmless."""
+        lock_file, self._lock_file = self._lock_file, None
+        if lock_file is not None:
+            lock_file.close()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+
+def ensure_dependency_environment(source_root: Path) -> EnvironmentLease:
+    """Prepare or reuse a locked environment that contains dependencies but no app install.
+
+    The caller holds the returned lease for as long as it uses the generation path.
+    """
     resolved_root = source_root.expanduser().resolve()
-    cache_root = _environment_cache_root()
+    store_root = _environment_cache_root()
     generation = _environment_cache_key(resolved_root)
-    environment_path = cache_root / generation
-    lock_path = cache_root / f"{generation}{_ENVIRONMENT_LOCK_SUFFIX}"
-    with lock_path.open("a+b") as lock_file:
+    environment_path = store_root / generation
+    lock_file = (store_root / f"{generation}{_ENVIRONMENT_LOCK_SUFFIX}").open("a+b")
+    try:
+        # Runs reusing one generation share its lock and never wait on each other.
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+        if _generation_defect(environment_path, generation) is None:
+            _stamp_last_use(environment_path)
+            return EnvironmentLease(environment_path, lock_file)
+        # Conversion is not atomic: another run may finish or retire the generation in the gap, so the
+        # exclusive holder looks again before it builds.
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        if environment_path.exists():
-            _validate_dependency_environment(environment_path, generation)
-            return environment_path
-        environment = _dependency_sync_environment(cache_root, environment_path)
-        sync_result = run_bounded_process(
-            (
-                *_UV_SYNC_ARGUMENTS,
-                str(resolved_root),
-                _UV_LOCKED_OPTION,
-                _UV_NO_INSTALL_PROJECT_OPTION,
-                _UV_NO_DEFAULT_GROUPS_OPTION,
-            ),
-            cwd=resolved_root,
-            environment=environment,
-            timeout_seconds=_UV_SYNC_TIMEOUT_SECONDS,
+        if _generation_defect(environment_path, generation) is not None:
+            _rebuild_generation(store_root, resolved_root, generation)
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+        return EnvironmentLease(environment_path, lock_file)
+    except BaseException:
+        lock_file.close()
+        raise
+
+
+def _rebuild_generation(store_root: Path, source_root: Path, generation: str) -> None:
+    """Build one generation under its exclusive lock, retiring whatever incomplete entry holds its path."""
+    environment_path = store_root / generation
+    if os.path.lexists(environment_path):
+        # A link, a thinned directory or a mismatched manifest is purge or kill damage, not state worth keeping.
+        _retire_entry(store_root, environment_path)
+    environment = _dependency_sync_environment(store_root, environment_path)
+    sync_result = run_bounded_process(
+        (
+            *_UV_SYNC_ARGUMENTS,
+            str(source_root),
+            _UV_LOCKED_OPTION,
+            _UV_NO_INSTALL_PROJECT_OPTION,
+            _UV_NO_DEFAULT_GROUPS_OPTION,
+        ),
+        cwd=source_root,
+        environment=environment,
+        timeout_seconds=_UV_SYNC_TIMEOUT_SECONDS,
+    )
+    if sync_result.exit_status != 0 or sync_result.diagnostics:
+        failure = RuntimeError(
+            _ENVIRONMENT_SYNC_FAILED.format(detail=_sync_failure_detail(sync_result, store_root, source_root))
         )
-        if sync_result.exit_status != 0 or sync_result.diagnostics:
-            if environment_path.exists() and not environment_path.is_symlink():
-                shutil.rmtree(environment_path)
-            detail = _PROCESS_FAILURE_DETAIL.format(exit_status=sync_result.exit_status)
-            raise RuntimeError(_ENVIRONMENT_SYNC_FAILED.format(detail=detail))
-        manifest_path = environment_path / _ENVIRONMENT_MANIFEST_FILENAME
-        manifest_path.write_text(json.dumps({"key": generation, "groups": _ENVIRONMENT_GROUPS}), encoding=_UTF8)
-        _validate_dependency_environment(environment_path, generation)
-        return environment_path
+        try:
+            if os.path.lexists(environment_path):
+                _retire_entry(store_root, environment_path)
+        except OSError as retire_error:
+            raise failure from retire_error
+        raise failure
+    manifest_path = environment_path / _ENVIRONMENT_MANIFEST_FILENAME
+    manifest_path.write_text(
+        json.dumps({_MANIFEST_KEY_FIELD: generation, _MANIFEST_GROUPS_FIELD: _ENVIRONMENT_GROUPS}),
+        encoding=_UTF8,
+    )
+    if _generation_defect(environment_path, generation) is not None:
+        raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name))
+    _stamp_last_use(environment_path)
+
+
+def _sync_failure_detail(sync_result: ProcessExecution, store_root: Path, source_root: Path) -> str:
+    """Describe a failed sync with uv's exit status and a bounded, path-free tail of its output."""
+    parts = [_PROCESS_FAILURE_DETAIL.format(exit_status=sync_result.exit_status)]
+    if sync_result.diagnostics:
+        parts.append(sync_result.diagnostics)
+    output = sync_result.stderr.strip() or sync_result.stdout.strip()
+    if output:
+        parts.append(
+            _SYNC_EVIDENCE_LABEL + _sanitize_evidence(output[-_SYNC_EVIDENCE_TAIL_LIMIT:], store_root, source_root)
+        )
+    return _DETAIL_SEPARATOR.join(parts)
+
+
+def _sanitize_evidence(text: str, store_root: Path, source_root: Path) -> str:
+    """Replace the source tree, the store and the account home, longest first, with their placeholders."""
+    text = text.replace(str(source_root), _SOURCE_TREE_PLACEHOLDER)
+    text = text.replace(str(store_root), DEPENDENCY_ENVIRONMENT_PLACEHOLDER)
+    return text.replace(pwd.getpwuid(os.getuid()).pw_dir, _ACCOUNT_HOME_PLACEHOLDER)
+
+
+def _retire_entry(store_root: Path, entry: Path) -> None:
+    """Rename a store entry aside atomically, which frees its path, then remove what was renamed.
+
+    The rename follows no link: a symlink is renamed and unlinked as a link and its target is untouched.
+    A failed removal leaves the renamed entry for a later retention pass and does not fail the caller.
+    """
+    retired = store_root / f"{entry.name}{_RETIRED_MARKER}{uuid.uuid4().hex}"
+    os.rename(entry, retired)
+    _remove_retired_entry(retired)
+
+
+def _remove_retired_entry(retired: Path) -> None:
+    """Delete one renamed-aside entry; a link is unlinked, a directory is removed without following links."""
+    try:
+        if retired.is_symlink():
+            os.unlink(retired)
+        else:
+            shutil.rmtree(retired)
+    except OSError:
+        pass
+
+
+def _stamp_last_use(environment_path: Path) -> None:
+    """Record that a run used this generation now; retention reads the stamp."""
+    os.utime(environment_path / _ENVIRONMENT_MANIFEST_FILENAME)
 
 
 def _dependency_sync_environment(cache_root: Path, environment_path: Path) -> dict[str, str]:
@@ -172,22 +285,29 @@ def _dependency_sync_environment(cache_root: Path, environment_path: Path) -> di
     return child_environment
 
 
-def _validate_dependency_environment(environment_path: Path, generation: str) -> None:
-    """Refuse an incomplete or mismatched cached environment without mutating it."""
+def _generation_defect(environment_path: Path, generation: str) -> str | None:
+    """Name what is missing or wrong with a cached generation, or None when its markers are complete.
+
+    This is a predicate the caller acts on: it never mutates the generation, and the caller decides
+    whether an incomplete one is rebuilt.
+    """
     manifest_path = environment_path / _ENVIRONMENT_MANIFEST_FILENAME
     python_path = environment_path / PYTHON_ENVIRONMENT_EXECUTABLE
     config_path = environment_path / _VENV_CONFIG_FILENAME
-    if (
-        environment_path.is_symlink()
-        or not environment_path.is_dir()
-        or not manifest_path.is_file()
-        or not python_path.is_file()
-        or not config_path.is_file()
-    ):
-        raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name))
+    if environment_path.is_symlink():
+        return "link"
+    if not environment_path.is_dir():
+        return "missing"
+    if not manifest_path.is_file():
+        return "manifest missing"
+    if not python_path.is_file():
+        return "interpreter missing"
+    if not config_path.is_file():
+        return "venv config missing"
     try:
         manifest: object = json.loads(manifest_path.read_text(encoding=_UTF8))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name)) from exc
+    except (OSError, json.JSONDecodeError):
+        return "manifest unreadable"
     if manifest != {_MANIFEST_KEY_FIELD: generation, _MANIFEST_GROUPS_FIELD: _ENVIRONMENT_GROUPS}:
-        raise RuntimeError(_ENVIRONMENT_INVALID.format(path=environment_path.name))
+        return "manifest mismatch"
+    return None
