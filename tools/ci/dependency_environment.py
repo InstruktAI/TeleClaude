@@ -13,6 +13,7 @@ import shutil
 import sys
 import time
 import uuid
+from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
 from typing import IO, Self
@@ -139,6 +140,18 @@ def _environment_cache_root() -> Path:
     return store_root
 
 
+class GenerationDefect(StrEnum):
+    """Why a cached generation is not complete; the value is the reason the recovery record carries."""
+
+    LINK = "link"
+    MISSING = "missing"
+    MANIFEST_MISSING = "manifest missing"
+    INTERPRETER_MISSING = "interpreter missing"
+    VENV_CONFIG_MISSING = "venv config missing"
+    MANIFEST_UNREADABLE = "manifest unreadable"
+    MANIFEST_MISMATCH = "manifest mismatch"
+
+
 class EnvironmentLease:
     """A generation path held in use: its shared lock keeps every other run from retiring it until closed."""
 
@@ -196,14 +209,14 @@ def ensure_dependency_environment(source_root: Path) -> EnvironmentLease:
         raise
 
 
-def _rebuild_generation(store_root: Path, source_root: Path, generation: str, defect: str) -> None:
+def _rebuild_generation(store_root: Path, source_root: Path, generation: str, defect: GenerationDefect) -> None:
     """Build one generation under its exclusive lock, retiring whatever incomplete entry holds its path."""
     started = time.monotonic()
     environment_path = store_root / generation
     if os.path.lexists(environment_path):
         # A link, a thinned directory or a mismatched manifest is purge or kill damage, not state worth keeping.
         _retire_entry(store_root, environment_path)
-        logger.warning("generation_recovered", generation=generation, reason=defect)
+        logger.warning("generation_recovered", generation=generation, reason=defect.value)
     # A sync holds the download-cache lock shared, so clearing the cache never runs under it.
     with (store_root / _CACHE_LOCK_FILENAME).open("a+b") as cache_lock:
         fcntl.flock(cache_lock.fileno(), fcntl.LOCK_SH)
@@ -314,7 +327,7 @@ def _dependency_sync_environment(cache_root: Path, environment_path: Path) -> di
     return child_environment
 
 
-def _generation_defect(environment_path: Path, generation: str) -> str | None:
+def _generation_defect(environment_path: Path, generation: str) -> GenerationDefect | None:
     """Name what is missing or wrong with a cached generation, or None when its markers are complete.
 
     This is a predicate the caller acts on: it never mutates the generation, and the caller decides
@@ -324,21 +337,21 @@ def _generation_defect(environment_path: Path, generation: str) -> str | None:
     python_path = environment_path / PYTHON_ENVIRONMENT_EXECUTABLE
     config_path = environment_path / _VENV_CONFIG_FILENAME
     if environment_path.is_symlink():
-        return "link"
+        return GenerationDefect.LINK
     if not environment_path.is_dir():
-        return "missing"
+        return GenerationDefect.MISSING
     if not manifest_path.is_file():
-        return "manifest missing"
+        return GenerationDefect.MANIFEST_MISSING
     if not python_path.is_file():
-        return "interpreter missing"
+        return GenerationDefect.INTERPRETER_MISSING
     if not config_path.is_file():
-        return "venv config missing"
+        return GenerationDefect.VENV_CONFIG_MISSING
     try:
         manifest: object = json.loads(manifest_path.read_text(encoding=_UTF8))
     except (OSError, json.JSONDecodeError):
-        return "manifest unreadable"
+        return GenerationDefect.MANIFEST_UNREADABLE
     if manifest != {_MANIFEST_KEY_FIELD: generation, _MANIFEST_GROUPS_FIELD: _ENVIRONMENT_GROUPS}:
-        return "manifest mismatch"
+        return GenerationDefect.MANIFEST_MISMATCH
     return None
 
 
